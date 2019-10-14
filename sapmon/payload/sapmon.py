@@ -320,7 +320,7 @@ def onboard(args):
    # Check connectivity to HANA instance
    logger.info("connecting to HANA instance to run test query")
    try:
-      hana = SapHana(hanaDetails = hanaDetails)
+      hana = SapHana(logger, hanaDetails = hanaDetails)
       hana.connect()
       hana.runQuery("SELECT 0 FROM DUMMY")
       hana.disconnect()
