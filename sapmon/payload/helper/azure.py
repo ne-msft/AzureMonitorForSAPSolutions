@@ -1,7 +1,14 @@
 from azure.common.credentials import BasicTokenAuthentication
+from azure.mgmt.storage import StorageManagementClient
 import base64
+import hashlib
 import hmac
 import json
+import requests
+import sys
+
+from const import *
+from helper.tools import *
 
 ###############################################################################
 
@@ -14,17 +21,18 @@ class AzureInstanceMetadataService:
    headers = {"Metadata": "true"}
 
    @staticmethod
-   def _sendRequest(endpoint, params = {}, headers = {}):
+   def _sendRequest(logger, endpoint, params = {}, headers = {}):
       params.update(AzureInstanceMetadataService.params)
       headers.update(AzureInstanceMetadataService.headers)
       return REST.sendRequest(
+         logger,
          "%s/%s" % (AzureInstanceMetadataService.uri, endpoint),
          params  = params,
          headers = headers,
          )
 
    @staticmethod
-   def getComputeInstance(operation):
+   def getComputeInstance(logger, operation):
       """
       Get the compute instance for the current VM via IMS
       """
@@ -32,6 +40,7 @@ class AzureInstanceMetadataService:
       computeInstance = None
       try:
          computeInstance = AzureInstanceMetadataService._sendRequest(
+            logger,
             "instance",
             headers = {"User-Agent": "SAP Monitor/%s (%s)" % (PAYLOAD_VERSION, operation)}
             )["compute"]
@@ -41,7 +50,7 @@ class AzureInstanceMetadataService:
       return computeInstance
 
    @staticmethod
-   def getAuthToken(resource, msiClientId = None):
+   def getAuthToken(logger, resource, msiClientId = None):
       """
       Get an authentication token via IMDS
       """
@@ -49,6 +58,7 @@ class AzureInstanceMetadataService:
       authToken = None
       try:
          authToken = AzureInstanceMetadataService._sendRequest(
+            logger,
             "identity/oauth2/token",
             params = {"resource": resource, "client_id": msiClientId}
             )["access_token"]
@@ -63,13 +73,15 @@ class AzureKeyVault:
    """
    Provide access to an Azure KeyVault instance
    """
-   params  = {"api-version": "7.0"}
+   params = {"api-version": "7.0"}
+   logger = None
 
-   def __init__(self, kvName, msiClientId = None):
-      logger.info("initializing KeyVault %s" % kvName)
+   def __init__(self, logger, kvName, msiClientId = None):
+      self.logger  = logger
+      self.logger.info("initializing KeyVault %s" % kvName)
       self.kvName  = kvName
       self.uri     = "https://%s.vault.azure.net" % kvName
-      self.token   = AzureInstanceMetadataService.getAuthToken("https://vault.azure.net", msiClientId)
+      self.token   = AzureInstanceMetadataService.getAuthToken(self.logger, "https://vault.azure.net", msiClientId)
       self.headers = {
          "Authorization": "Bearer %s" % self.token,
          "Content-Type":  "application/json"
@@ -80,6 +92,7 @@ class AzureKeyVault:
       Easy access to KeyVault REST endpoints
       """
       response = REST.sendRequest(
+         self.logger,
          endpoint,
          method  = method,
          params  = self.params,
@@ -94,7 +107,7 @@ class AzureKeyVault:
       """
       Set a secret in the KeyVault
       """
-      logger.info("setting KeyVault secret for secretName=%s" % secretName)
+      self.logger.info("setting KeyVault secret for secretName=%s" % secretName)
       success = False
       try:
          (success, response) = self._sendRequest(
@@ -103,7 +116,7 @@ class AzureKeyVault:
             data   = json.dumps({"value": secretValue})
             )
       except Exception as e:
-         logger.critical("could not set KeyVault secret (%s)" % e)
+         self.logger.critical("could not set KeyVault secret (%s)" % e)
          sys.exit(ERROR_SETTING_KEYVAULT_SECRET)
       return success
 
@@ -111,43 +124,43 @@ class AzureKeyVault:
       """
       Get the current version of a specific secret in the KeyVault
       """
-      logger.info("getting KeyVault secret for secretId=%s" % secretId)
+      self.logger.info("getting KeyVault secret for secretId=%s" % secretId)
       secret = None
       try:
          (success, secret) = self._sendRequest(secretId)
       except Exception as e:
-         logger.error("could not get KeyVault secret for secretId=%s (%s)" % (secretId, e))
+         self.logger.error("could not get KeyVault secret for secretId=%s (%s)" % (secretId, e))
       return secret
 
    def getCurrentSecrets(self):
       """
       Get the current versions of all secrets inside the customer KeyVault
       """
-      logger.info("getting current KeyVault secrets")
+      self.logger.info("getting current KeyVault secrets")
       secrets = {}
       try:
          (success, kvSecrets) = self._sendRequest("%s/secrets" % self.uri)
-         logger.debug("kvSecrets=%s" % kvSecrets)
+         self.logger.debug("kvSecrets=%s" % kvSecrets)
          for k in kvSecrets:
             id = k["id"].split("/")[-1]
             secrets[id] = self.getSecret(k["id"])
       except Exception as e:
-         logger.error("could not get current KeyVault secrets (%s)" % e)
+         self.logger.error("could not get current KeyVault secrets (%s)" % e)
       return secrets
 
    def exists(self):
       """
       Check if a KeyVault with a specified name exists
       """
-      logger.info("checking if KeyVault %s exists" % self.kvName)
+      self.logger.info("checking if KeyVault %s exists" % self.kvName)
       try:
          (success, response) = self._sendRequest("%s/secrets" % self.uri)
       except Exception as e:
-         logger.error("could not determine is KeyVault %s exists (%s)" % (kvName, e))
+         self.logger.error("could not determine is KeyVault %s exists (%s)" % (self.kvName, e))
       if success:
-         logger.info("KeyVault %s exists" % self.kvName)
+         self.logger.info("KeyVault %s exists" % self.kvName)
       else:
-         logger.info("KeyVault %s does not exist" % self.kvName)
+         self.logger.info("KeyVault %s does not exist" % self.kvName)
       return success
 
 ###############################################################################
@@ -156,8 +169,11 @@ class AzureLogAnalytics:
    """
    Provide access to an Azure Log Analytics WOrkspace
    """
-   def __init__(self, workspaceId, sharedKey):
-      logger.info("initializing Log Analytics instance")
+   logger = None
+
+   def __init__(self, logger, workspaceId, sharedKey):
+      self.logger      = logger
+      self.logger.info("initializing Log Analytics instance")
       self.workspaceId = workspaceId
       self.sharedKey   = sharedKey
       self.uri         = "https://%s.ods.opinsights.azure.com/api/logs?api-version=2016-04-01" % workspaceId
@@ -183,7 +199,7 @@ x-ms-date:%s
          stringHash = encodedHash.decode("utf-8")
          return "SharedKey %s:%s" % (self.workspaceId, stringHash)
 
-      logger.info("ingesting telemetry into Log Analytics")
+      self.logger.info("ingesting telemetry into Log Analytics")
       timestamp = datetime.utcnow().strftime(TIME_FORMAT_LOG_ANALYTICS)
       headers = {
          "content-type":  "application/json",
@@ -192,34 +208,42 @@ x-ms-date:%s
          "x-ms-date":     timestamp,
          "time-generated-field": colTimeGenerated,
       }
-      logger.debug("data=%s" % jsonData)
+      self.logger.debug("data=%s" % jsonData)
       response = None
       try:
          response = REST.sendRequest(
+            self.logger,
             self.uri,
             method  = requests.post,
             headers = headers,
             data    = jsonData,
             )
       except Exception as e:
-         logger.error("could not ingest telemetry into Log Analytics (%s)" % e)
+         self.logger.error("could not ingest telemetry into Log Analytics (%s)" % e)
       return response
 
 ###############################################################################
 
 class AzureStorageQueue():
+    """
+    Provide access to an Azure Storage Queue (used for payload logging)
+    """
     accountName = None
     name = None
     token = {}
     subscriptionId = None
     resourceGroup = None
-    def __init__(self, sapmonId, msiClientID, subscriptionId, resourceGroup):
+    logger = None
+
+    def __init__(self, logger, sapmonId, msiClientID, subscriptionId, resourceGroup):
         """
         Retrieve the name of the storage account and storage queue
         """
+        self.logger = logger
+        self.logger.info("initializing Storage Queue instance")
         self.accountName = STORAGE_ACCOUNT_NAMING_CONVENTION % sapmonId
         self.name = STORAGE_QUEUE_NAMING_CONVENTION % sapmonId
-        tokenResponse = AzureInstanceMetadataService.getAuthToken(resource="https://management.azure.com/", msiClientId=msiClientID)
+        tokenResponse = AzureInstanceMetadataService.getAuthToken(self.logger, resource="https://management.azure.com/", msiClientId=msiClientID)
         self.token["access_token"] = tokenResponse
         self.subscriptionId = subscriptionId
         self.resourceGroup = resourceGroup
@@ -228,9 +252,11 @@ class AzureStorageQueue():
         """
         Get the access key to the storage queue
         """
+        self.logger.info("getting access key for Storage Queue")
         storageclient = StorageManagementClient(credentials=BasicTokenAuthentication(self.token), subscription_id=self.subscriptionId)
         storageKeys = storageclient.storage_accounts.list_keys(resource_group_name=self.resourceGroup, account_name=self.accountName)
         if storageKeys is None or len(storageKeys.keys) <= 0 :
-           print("Could not retrive storage keys of the storage account{0}".format(self.accountName))
+           self.log.error("Could not retrive storage keys of the storage account{0}".format(self.accountName))
            return None
         return storageKeys.keys[0].value
+

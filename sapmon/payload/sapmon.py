@@ -19,32 +19,10 @@ import os
 import re
 import sys
 
+from const import *
 from helper.azure import *
 from helper.tools import *
 from provider.saphana import *
-
-###############################################################################
-
-PAYLOAD_VERSION                   = "0.7.0"
-
-PATH_PAYLOAD                      = os.path.dirname(os.path.realpath(__file__))
-PATH_ROOT                         = os.path.abspath(os.path.join(PATH_PAYLOAD, ".."))
-PATH_CONTENT                      = os.path.join(PATH_ROOT, "content")
-PATH_TRACE                        = os.path.join(PATH_ROOT, "trace")
-PATH_STATE                        = os.path.join(PATH_ROOT, "state")
-FILENAME_STATEFILE                = os.path.join(PATH_STATE, "sapmon.state")
-FILENAME_TRACE                    = os.path.join(PATH_TRACE, "sapmon.trc")
-
-TIME_FORMAT_LOG_ANALYTICS         = "%a, %d %b %Y %H:%M:%S GMT"
-TIME_FORMAT_JSON                  = "%Y-%m-%dT%H:%M:%S.%fZ"
-
-DEFAULT_CONSOLE_LOG_LEVEL         = logging.INFO
-DEFAULT_FILE_LOG_LEVEL            = logging.INFO
-DEFAULT_QUEUE_LOG_LEVEL           = logging.DEBUG
-
-KEYVAULT_NAMING_CONVENTION        = "sapmon-kv-%s"
-STORAGE_ACCOUNT_NAMING_CONVENTION = "sapmonsto%s"
-STORAGE_QUEUE_NAMING_CONVENTION   = "sapmon-que-%s"
 
 ###############################################################################
 
@@ -53,7 +31,7 @@ LOG_CONFIG = {
     "disable_existing_loggers": True,
     "formatters": {
         "detailed": {
-            "format": "[%(process)d] %(asctime)s %(levelname).1s %(funcName)s:%(lineno)d %(message)s",
+            "format": "[%(process)d] %(asctime)s %(levelname).1s %(filename)s:%(lineno)d %(message)s",
         },
         "simple": {
             "format": "%(levelname)-8s %(message)s",
@@ -82,48 +60,9 @@ LOG_CONFIG = {
 
 ###############################################################################
 
-ERROR_GETTING_AUTH_TOKEN       = 10
-ERROR_SETTING_KEYVAULT_SECRET  = 20
-ERROR_KEYVAULT_NOT_FOUND       = 21
-ERROR_GETTING_LOG_CREDENTIALS  = 22
-ERROR_GETTING_HANA_CREDENTIALS = 23
-ERROR_HANA_CONNECTION          = 30
-ERROR_FILE_PERMISSION_DENIED   = 40
-
-###############################################################################
-
 sapmonContentTypes = {
    "HANA": "SapHanaCheck"
 }
-
-class SapmonCheck(ABC):
-   """
-   Implements a monitoring check inside SAP Monitor
-   """
-   version       = ""
-   name          = ""
-   description   = ""
-   customLog     = ""
-   frequencySecs = 0
-   state         = {}
-   def __init__(self, version, name, description, customLog, frequencySecs, enabled=True):
-      self.version       = version
-      self.name          = name
-      self.description   = description
-      self.customLog     = customLog
-      self.frequencySecs = frequencySecs
-      self.state         = {
-         "isEnabled":    enabled,
-         "lastRunLocal": None,
-      }
-
-   @abstractmethod
-   def run(self):
-      pass
-
-   @abstractmethod
-   def updateState(self):
-      pass
 
 ###############################################################################
 
@@ -135,16 +74,17 @@ class _Context(object):
    availableChecks = []
 
    def __init__(self, operation):
+      global logger
       logger.info("initializing context")
-      self.vmInstance = AzureInstanceMetadataService.getComputeInstance(operation)
+      self.vmInstance = AzureInstanceMetadataService.getComputeInstance(logger, operation)
       self.vmTags = dict(map(lambda s : s.split(':'), self.vmInstance["tags"].split(";")))
       logger.debug("vmTags=%s" % self.vmTags)
       self.sapmonId = self.vmTags["SapMonId"]
       logger.debug("sapmonId=%s " % self.sapmonId)
-      self.azKv = AzureKeyVault(KEYVAULT_NAMING_CONVENTION % self.sapmonId, self.vmTags.get("SapMonMsiClientId", None))
+      self.azKv = AzureKeyVault(logger, KEYVAULT_NAMING_CONVENTION % self.sapmonId, self.vmTags.get("SapMonMsiClientId", None))
       if not self.azKv.exists():
          sys.exit(ERROR_KEYVAULT_NOT_FOUND)
-      self.initChecks()
+      self.initContent()
       self.readStateFile()
       self.addQueueLogHandler()
       return
@@ -152,7 +92,13 @@ class _Context(object):
    def addQueueLogHandler(self):
       global logger
       try:
-         storageQueue = AzureStorageQueue(sapmonId=self.sapmonId, msiClientID=self.vmTags.get("SapMonMsiClientId", None),subscriptionId=self.vmInstance["subscriptionId"],resourceGroup=self.vmInstance["resourceGroupName"])
+         storageQueue = AzureStorageQueue(
+            logger,
+            sapmonId = self.sapmonId,
+            msiClientID = self.vmTags.get("SapMonMsiClientId", None),
+            subscriptionId = self.vmInstance["subscriptionId"],
+            resourceGroup=self.vmInstance["resourceGroupName"]
+            )
          storageKey = storageQueue.getAccessKey()
          queueStorageLogHandler = QueueStorageHandler(account_name=storageQueue.accountName,
                                                    account_key=storageKey,
@@ -167,15 +113,16 @@ class _Context(object):
       logger.addHandler(queueStorageLogHandler)
       return
 
-   def initChecks(self):
+   def initContent(self):
       """
-      Initialize all sapmonChecks (pre-delivered via JSON files)
+      Initialize all monitoring content (pre-delivered via content/*.json)
       """
+      global logger
       logger.info("initializing monitoring checks")
-      for filename in os.listdir(PATH_PAYLOAD):
+      for filename in os.listdir(PATH_CONTENT):
          if not filename.endswith(".json"):
             continue
-         contentFullPath = "%s/%s" % (PATH_PAYLOAD, filename)
+         contentFullPath = "%s/%s" % (PATH_CONTENT, filename)
          logger.debug("contentFullPath=%s" % contentFullPath)
          try:
             with open(contentFullPath, "r") as file:
@@ -185,22 +132,22 @@ class _Context(object):
             logger.error("could not load content file %s (%s)" % (contentFullPath, e))
          contentType = jsonData.get("contentType", None)
          if not contentType:
-            logging.error("content type not specified in content file %s, skipping" % contentFullPath)
+            logger.error("content type not specified in content file %s, skipping" % contentFullPath)
             continue
          contentVersion = jsonData.get("contentVersion", None)
          if not contentVersion:
-            logging.error("content version not specified in content file %s, skipping" % contentFullPath)
+            logger.error("content version not specified in content file %s, skipping" % contentFullPath)
             continue
          checks = jsonData.get("checks", [])
          if not contentType in sapmonContentTypes:
-            logging.error("unknown content type %s, skipping content file %s" % (contentType, contentFullPath))
+            logger.error("unknown content type %s, skipping content file %s" % (contentType, contentFullPath))
             continue
          for checkOptions in checks:
             try:
-               logging.info("instantiate check of type %s" % contentType)
+               logger.info("instantiate check of type %s" % contentType)
                checkOptions["version"] = contentVersion
-               logging.debug("checkOptions=%s" % checkOptions)
-               check = eval(sapmonContentTypes[contentType])(**checkOptions)
+               logger.debug("checkOptions=%s" % checkOptions)
+               check = eval(sapmonContentTypes[contentType])(logger, **checkOptions)
                self.availableChecks.append(check)
             except Exception as e:
                logger.error("could not instantiate new check of type %s (%s)" % (contentType, e))
@@ -211,6 +158,7 @@ class _Context(object):
       """
       Get most recent state from a local file
       """
+      global logger
       logger.info("reading state file")
       success  = True
       jsonData = {}
@@ -218,7 +166,7 @@ class _Context(object):
          logger.debug("FILENAME_STATEFILE=%s" % FILENAME_STATEFILE)
          with open(FILENAME_STATEFILE, "r") as file:
             data = file.read()
-         jsonData = json.loads(data, object_hook=_JsonDecoder.datetimeHook)
+         jsonData = json.loads(data, object_hook=JsonDecoder.datetimeHook)
       except FileNotFoundError as e:
          logger.warning("state file %s does not exist" % FILENAME_STATEFILE)
       except Exception as e:
@@ -239,6 +187,7 @@ class _Context(object):
       """
       Persist current state into a local file
       """
+      global logger
       logger.info("writing state file")
       success  = False
       jsonData = {}
@@ -248,7 +197,7 @@ class _Context(object):
             sectionKey = "%s_%s" % (c.prefix, c.name)
             jsonData[sectionKey] = c.state
          with open(FILENAME_STATEFILE, "w") as file:
-            json.dump(jsonData, file, indent=3, cls=_JsonEncoder)
+            json.dump(jsonData, file, indent=3, cls=JsonEncoder)
          success = True
       except Exception as e:
          logger.error("could not write state file %s (%s)" % (FILENAME_STATEFILE, e))
@@ -258,9 +207,10 @@ class _Context(object):
       """
       Fetch HANA password from a separate KeyVault.
       """
+      global logger
       vaultNameSearch = re.search("https://(.*).vault.azure.net", passwordKeyVault)
       logger.debug("vaultNameSearch=%s" % vaultNameSearch)
-      kv = AzureKeyVault(vaultNameSearch.group(1), passwordKeyVaultMsiClientId)
+      kv = AzureKeyVault(logger, vaultNameSearch.group(1), passwordKeyVaultMsiClientId)
       logger.debug("kv=%s" % kv)
       return kv.getSecret(passwordKeyVault)
 
@@ -272,12 +222,14 @@ class _Context(object):
          return {k: v for k, v in iter(d.items()) if k.startswith(s)}
 
       def fetchHanaPasswordFromKeyVault(self, passwordKeyVault, passwordKeyVaultMsiClientId):
+         global logger
          vaultNameSearch = re.search('https://(.*).vault.azure.net', passwordKeyVault)
          logger.debug("vaultNameSearch=%s" % vaultNameSearch)
-         kv = AzureKeyVault(vaultNameSearch.group(1), passwordKeyVaultMsiClientId)
+         kv = AzureKeyVault(logger, vaultNameSearch.group(1), passwordKeyVaultMsiClientId)
          logger.debug("kv=%s" % kv)
          return kv.getSecret(passwordKeyVault)
 
+      global logger
       logger.info("parsing secrets")
       secrets = self.azKv.getCurrentSecrets()
 
@@ -297,7 +249,7 @@ class _Context(object):
                logger.critical("could not fetch HANA password (instance=%s) from KeyVault (%s)" % (h, e))
                sys.exit(ERROR_GETTING_HANA_CREDENTIALS)
          try:
-            hanaInstance = SapHana(hanaDetails = hanaDetails)
+            hanaInstance = SapHana(logger, hanaDetails = hanaDetails)
          except Exception as e:
             logger.error("could not create HANA instance %s) (%s)" % (h, e))
             continue
@@ -310,6 +262,7 @@ class _Context(object):
          logger.critical("could not fetch Log Analytics credentials (%s)" % e)
          sys.exit(ERROR_GETTING_LOG_CREDENTIALS)
       self.azLa = AzureLogAnalytics(
+         logger,
          laSecret["LogAnalyticsWorkspaceId"],
          laSecret["LogAnalyticsSharedKey"]
          )
@@ -426,12 +379,11 @@ def initLogger(args):
    """
    Initialize the global logger object
    """
-   global logger
    if args.verbose:
       LOG_CONFIG["handlers"]["console"]["formatter"] = "detailed"
       LOG_CONFIG["handlers"]["console"]["level"] = logging.DEBUG
    logging.config.dictConfig(LOG_CONFIG)
-   logger = logging.getLogger(__name__)
+   return logging.getLogger(__name__)
 
 def ensureDirectoryStructure():
    """
@@ -471,7 +423,7 @@ def main():
    monParser  = subParsers.add_parser("monitor", description="Monitor payload", help="Execute the monitoring payload")
    monParser.set_defaults(func=monitor)
    args = parser.parse_args()
-   initLogger(args)
+   logger = initLogger(args)
    ctx = _Context(args.command)
    args.func(args)
 

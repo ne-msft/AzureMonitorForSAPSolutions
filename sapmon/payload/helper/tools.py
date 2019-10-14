@@ -1,3 +1,4 @@
+from const import *
 from datetime import date, datetime, timedelta
 import decimal
 import http.client as http_client
@@ -13,7 +14,7 @@ class REST:
    """
    @staticmethod
    # TODO(tniek) - improve error handling (include HTTP status together with response)
-   def sendRequest(endpoint, method = requests.get, params = {}, headers = {}, timeout = 5, data = None, debug = False):
+   def sendRequest(logger, endpoint, method = requests.get, params = {}, headers = {}, timeout = 5, data = None, debug = False):
       if debug:
          http_client.HTTPConnection.debuglevel = 1
          logging.basicConfig()
@@ -44,7 +45,7 @@ class REST:
 
 ###############################################################################
 
-class _JsonEncoder(json.JSONEncoder):
+class JsonEncoder(json.JSONEncoder):
    """
    Helper class to serialize datetime and Decimal objects into JSON
    """
@@ -55,7 +56,7 @@ class _JsonEncoder(json.JSONEncoder):
          return datetime.strftime(o, TIME_FORMAT_JSON)
       return super(_JsonEncoder, self).default(o)
 
-class _JsonDecoder(json.JSONDecoder):
+class JsonDecoder(json.JSONDecoder):
    """
    Helper class to de-serialize JSON into datetime and Decimal objects
    """
@@ -66,3 +67,5 @@ class _JsonDecoder(json.JSONDecoder):
          except Exception as e:
             pass
       return jsonData
+
+print("HA?")
