@@ -12,9 +12,9 @@ class SapmonCheck(ABC):
    customLog     = ""
    frequencySecs = 0
    state         = {}
-   logger        = None
-   def __init__(self, logger, version, name, description, customLog, frequencySecs, enabled=True):
-      self.logger        = logger
+   tracer        = None
+   def __init__(self, tracer, version, name, description, customLog, frequencySecs, enabled=True):
+      self.tracer        = tracer
       self.version       = version
       self.name          = name
       self.description   = description

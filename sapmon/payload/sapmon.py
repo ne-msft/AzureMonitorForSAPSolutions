@@ -9,12 +9,8 @@
 
 from abc import ABC, abstractmethod
 import argparse
-from azure_storage_logging.handlers import QueueStorageHandler
-from azure.mgmt.storage import StorageManagementClient
 from datetime import date, datetime, timedelta
 import json
-import logging
-import logging.config
 import os
 import re
 import sys
@@ -22,41 +18,8 @@ import sys
 from const import *
 from helper.azure import *
 from helper.tools import *
+from helper.tracing import *
 from provider.saphana import *
-
-###############################################################################
-
-LOG_CONFIG = {
-    "version": 1,
-    "disable_existing_loggers": True,
-    "formatters": {
-        "detailed": {
-            "format": "[%(process)d] %(asctime)s %(levelname).1s %(filename)s:%(lineno)d %(message)s",
-        },
-        "simple": {
-            "format": "%(levelname)-8s %(message)s",
-        }
-    },
-    "handlers": {
-        "console": {
-            "class": "logging.StreamHandler",
-            "formatter": "simple",
-            "level": DEFAULT_CONSOLE_LOG_LEVEL,
-        },
-        "file": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "formatter": "detailed",
-            "level": DEFAULT_FILE_LOG_LEVEL,
-            "filename": FILENAME_TRACE,
-            "maxBytes": 10000000,
-            "backupCount": 10,
-        },
-    },
-    "root": {
-        "level": logging.DEBUG,
-        "handlers": ["console", "file"],
-    }
-}
 
 ###############################################################################
 
@@ -74,125 +37,101 @@ class _Context(object):
    availableChecks = []
 
    def __init__(self, operation):
-      global logger
-      logger.info("initializing context")
-      self.vmInstance = AzureInstanceMetadataService.getComputeInstance(logger, operation)
+      global tracer
+      tracer.info("initializing context")
+      self.vmInstance = AzureInstanceMetadataService.getComputeInstance(tracer, operation)
       self.vmTags = dict(map(lambda s : s.split(':'), self.vmInstance["tags"].split(";")))
-      logger.debug("vmTags=%s" % self.vmTags)
+      tracer.debug("vmTags=%s" % self.vmTags)
       self.sapmonId = self.vmTags["SapMonId"]
-      logger.debug("sapmonId=%s " % self.sapmonId)
-      self.azKv = AzureKeyVault(logger, KEYVAULT_NAMING_CONVENTION % self.sapmonId, self.vmTags.get("SapMonMsiClientId", None))
+      tracer.debug("sapmonId=%s " % self.sapmonId)
+      self.azKv = AzureKeyVault(tracer, KEYVAULT_NAMING_CONVENTION % self.sapmonId, self.vmTags.get("SapMonMsiClientId", None))
       if not self.azKv.exists():
          sys.exit(ERROR_KEYVAULT_NOT_FOUND)
-      self.initContent()
+      self.initMonitoringContent()
       self.readStateFile()
-      self.addQueueLogHandler()
+      tracing.addQueueLogHandler(tracer, self)
       return
  
-   def addQueueLogHandler(self):
-      global logger
-      try:
-         storageQueue = AzureStorageQueue(
-            logger,
-            sapmonId = self.sapmonId,
-            msiClientID = self.vmTags.get("SapMonMsiClientId", None),
-            subscriptionId = self.vmInstance["subscriptionId"],
-            resourceGroup=self.vmInstance["resourceGroupName"]
-            )
-         storageKey = storageQueue.getAccessKey()
-         queueStorageLogHandler = QueueStorageHandler(account_name=storageQueue.accountName,
-                                                   account_key=storageKey,
-                                                   protocol="https",
-                                                   queue=storageQueue.name)
-         queueStorageLogHandler.level = DEFAULT_QUEUE_LOG_LEVEL
-         formatter = logging.Formatter(LOG_CONFIG["formatters"]["detailed"]["format"])
-         queueStorageLogHandler.setFormatter(formatter)
-      except Exception as e:
-         logger.error("could not add handler for the storage queue logging (%s) " % e)
-         return
-      logger.addHandler(queueStorageLogHandler)
-      return
-
-   def initContent(self):
+   def initMonitoringContent(self):
       """
       Initialize all monitoring content (pre-delivered via content/*.json)
       """
-      global logger
-      logger.info("initializing monitoring checks")
+      global tracer
+      tracer.info("initializing monitoring content")
       for filename in os.listdir(PATH_CONTENT):
          if not filename.endswith(".json"):
             continue
          contentFullPath = "%s/%s" % (PATH_CONTENT, filename)
-         logger.debug("contentFullPath=%s" % contentFullPath)
+         tracer.debug("contentFullPath=%s" % contentFullPath)
          try:
             with open(contentFullPath, "r") as file:
                data = file.read()
             jsonData = json.loads(data)
          except Exception as e:
-            logger.error("could not load content file %s (%s)" % (contentFullPath, e))
+            tracer.error("could not load content file %s (%s)" % (contentFullPath, e))
          contentType = jsonData.get("contentType", None)
          if not contentType:
-            logger.error("content type not specified in content file %s, skipping" % contentFullPath)
+            tracer.error("content type not specified in content file %s, skipping" % contentFullPath)
             continue
          contentVersion = jsonData.get("contentVersion", None)
          if not contentVersion:
-            logger.error("content version not specified in content file %s, skipping" % contentFullPath)
+            tracer.error("content version not specified in content file %s, skipping" % contentFullPath)
             continue
          checks = jsonData.get("checks", [])
          if not contentType in sapmonContentTypes:
-            logger.error("unknown content type %s, skipping content file %s" % (contentType, contentFullPath))
+            tracer.error("unknown content type %s, skipping content file %s" % (contentType, contentFullPath))
             continue
          for checkOptions in checks:
             try:
-               logger.info("instantiate check of type %s" % contentType)
+               tracer.info("instantiate check of type %s" % contentType)
                checkOptions["version"] = contentVersion
-               logger.debug("checkOptions=%s" % checkOptions)
-               check = eval(sapmonContentTypes[contentType])(logger, **checkOptions)
+               tracer.debug("checkOptions=%s" % checkOptions)
+               check = eval(sapmonContentTypes[contentType])(tracer, **checkOptions)
                self.availableChecks.append(check)
             except Exception as e:
-               logger.error("could not instantiate new check of type %s (%s)" % (contentType, e))
-      logger.info("successfully loaded %d monitoring checks" % len(self.availableChecks))
+               tracer.error("could not instantiate new check of type %s (%s)" % (contentType, e))
+      tracer.info("successfully loaded %d monitoring checks" % len(self.availableChecks))
       return
 
    def readStateFile(self):
       """
       Get most recent state from a local file
       """
-      global logger
-      logger.info("reading state file")
+      global tracer
+      tracer.info("reading state file")
       success  = True
       jsonData = {}
       try:
-         logger.debug("FILENAME_STATEFILE=%s" % FILENAME_STATEFILE)
+         tracer.debug("FILENAME_STATEFILE=%s" % FILENAME_STATEFILE)
          with open(FILENAME_STATEFILE, "r") as file:
             data = file.read()
          jsonData = json.loads(data, object_hook=JsonDecoder.datetimeHook)
       except FileNotFoundError as e:
-         logger.warning("state file %s does not exist" % FILENAME_STATEFILE)
+         tracer.warning("state file %s does not exist" % FILENAME_STATEFILE)
       except Exception as e:
-         logger.error("could not read state file %s (%s)" % (FILENAME_STATEFILE, e))
+         tracer.error("could not read state file %s (%s)" % (FILENAME_STATEFILE, e))
       for c in self.availableChecks:
          sectionKey = "%s_%s" % (c.prefix, c.name)
          if sectionKey in jsonData:
-            logger.debug("parsing section %s" % sectionKey)
+            tracer.debug("parsing section %s" % sectionKey)
             section = jsonData.get(sectionKey, {})
             for k in section.keys():
                c.state[k] = section[k]
          else:
-            logger.warning("section %s not found in state file" % sectionKey)
-      logger.info("successfully parsed state file")
+            tracer.warning("section %s not found in state file" % sectionKey)
+      tracer.info("successfully parsed state file")
       return success
 
    def writeStateFile(self):
       """
       Persist current state into a local file
       """
-      global logger
-      logger.info("writing state file")
+      global tracer
+      tracer.info("writing state file")
       success  = False
       jsonData = {}
       try:
-         logger.debug("FILENAME_STATEFILE=%s" % FILENAME_STATEFILE)
+         tracer.debug("FILENAME_STATEFILE=%s" % FILENAME_STATEFILE)
          for c in self.availableChecks:
             sectionKey = "%s_%s" % (c.prefix, c.name)
             jsonData[sectionKey] = c.state
@@ -200,18 +139,19 @@ class _Context(object):
             json.dump(jsonData, file, indent=3, cls=JsonEncoder)
          success = True
       except Exception as e:
-         logger.error("could not write state file %s (%s)" % (FILENAME_STATEFILE, e))
+         tracer.error("could not write state file %s (%s)" % (FILENAME_STATEFILE, e))
       return success
 
    def fetchHanaPasswordFromKeyVault(self, passwordKeyVault, passwordKeyVaultMsiClientId):
       """
       Fetch HANA password from a separate KeyVault.
       """
-      global logger
+      global tracer
+      tracer.info("fetching HANA credentials from KeyVault")
       vaultNameSearch = re.search("https://(.*).vault.azure.net", passwordKeyVault)
-      logger.debug("vaultNameSearch=%s" % vaultNameSearch)
-      kv = AzureKeyVault(logger, vaultNameSearch.group(1), passwordKeyVaultMsiClientId)
-      logger.debug("kv=%s" % kv)
+      tracer.debug("vaultNameSearch=%s" % vaultNameSearch)
+      kv = AzureKeyVault(tracer, vaultNameSearch.group(1), passwordKeyVaultMsiClientId)
+      tracer.debug("kv=%s" % kv)
       return kv.getSecret(passwordKeyVault)
 
    def parseSecrets(self):
@@ -222,15 +162,15 @@ class _Context(object):
          return {k: v for k, v in iter(d.items()) if k.startswith(s)}
 
       def fetchHanaPasswordFromKeyVault(self, passwordKeyVault, passwordKeyVaultMsiClientId):
-         global logger
+         global tracer
          vaultNameSearch = re.search('https://(.*).vault.azure.net', passwordKeyVault)
-         logger.debug("vaultNameSearch=%s" % vaultNameSearch)
-         kv = AzureKeyVault(logger, vaultNameSearch.group(1), passwordKeyVaultMsiClientId)
-         logger.debug("kv=%s" % kv)
+         tracer.debug("vaultNameSearch=%s" % vaultNameSearch)
+         kv = AzureKeyVault(tracer, vaultNameSearch.group(1), passwordKeyVaultMsiClientId)
+         tracer.debug("kv=%s" % kv)
          return kv.getSecret(passwordKeyVault)
 
-      global logger
-      logger.info("parsing secrets")
+      global tracer
+      tracer.info("parsing secrets")
       secrets = self.azKv.getCurrentSecrets()
 
       # extract HANA instance(s) from secrets
@@ -238,20 +178,20 @@ class _Context(object):
       for h in hanaSecrets.keys():
          hanaDetails = json.loads(hanaSecrets[h])
          if not hanaDetails["HanaDbPassword"]:
-            logger.info("no HANA password provided; need to fetch password from separate KeyVault")
+            tracer.info("no HANA password provided; need to fetch password from separate KeyVault")
             try:
                password = self.fetchHanaPasswordFromKeyVault(
                   hanaDetails["HanaDbPasswordKeyVaultUrl"],
                   hanaDetails["PasswordKeyVaultMsiClientId"])
                hanaDetails["HanaDbPassword"] = password
-               logger.debug("retrieved HANA password successfully from KeyVault")
+               tracer.debug("retrieved HANA password successfully from KeyVault")
             except Exception as e:
-               logger.critical("could not fetch HANA password (instance=%s) from KeyVault (%s)" % (h, e))
+               tracer.critical("could not fetch HANA password (instance=%s) from KeyVault (%s)" % (h, e))
                sys.exit(ERROR_GETTING_HANA_CREDENTIALS)
          try:
-            hanaInstance = SapHana(logger, hanaDetails = hanaDetails)
+            hanaInstance = SapHana(tracer, hanaDetails = hanaDetails)
          except Exception as e:
-            logger.error("could not create HANA instance %s) (%s)" % (h, e))
+            tracer.error("could not create HANA instance %s) (%s)" % (h, e))
             continue
          self.hanaInstances.append(hanaInstance)
 
@@ -259,10 +199,10 @@ class _Context(object):
       try:
          laSecret = json.loads(secrets["AzureLogAnalytics"])
       except Exception as e:
-         logger.critical("could not fetch Log Analytics credentials (%s)" % e)
+         tracer.critical("could not fetch Log Analytics credentials (%s)" % e)
          sys.exit(ERROR_GETTING_LOG_CREDENTIALS)
       self.azLa = AzureLogAnalytics(
-         logger,
+         tracer,
          laSecret["LogAnalyticsWorkspaceId"],
          laSecret["LogAnalyticsSharedKey"]
          )
@@ -275,11 +215,11 @@ def onboard(args):
    Store credentials in the customer KeyVault
    (To be executed as custom script upon initial deployment of collector VM)
    """
-   logger.info("starting onboarding payload")
+   tracer.info("starting onboarding payload")
 
    # Credentials (provided by user) to the existing HANA instance
    hanaSecretName = "SapHana-%s" % args.HanaDbName
-   logger.debug("hanaSecretName=%s" % hanaSecretName)
+   tracer.debug("hanaSecretName=%s" % hanaSecretName)
    hanaSecretValue = json.dumps({
       "HanaHostname":                args.HanaHostname,
       "HanaDbName":                  args.HanaDbName,
@@ -289,46 +229,46 @@ def onboard(args):
       "HanaDbSqlPort":               args.HanaDbSqlPort,
       "PasswordKeyVaultMsiClientId": args.PasswordKeyVaultMsiClientId,
       })
-   logger.info("storing HANA credentials as KeyVault secret")
+   tracer.info("storing HANA credentials as KeyVault secret")
    try:
       ctx.azKv.setSecret(hanaSecretName, hanaSecretValue)
    except Exception as e:
-      logger.critical("could not store HANA credentials in KeyVault secret (%s)" % e)
+      tracer.critical("could not store HANA credentials in KeyVault secret (%s)" % e)
       sys.exit(ERROR_SETTING_KEYVAULT_SECRET)
 
    # Credentials (created by HanaRP) to the newly created Log Analytics Workspace
    laSecretName = "AzureLogAnalytics"
-   logger.debug("laSecretName=%s" % laSecretName)
+   tracer.debug("laSecretName=%s" % laSecretName)
    laSecretValue = json.dumps({
       "LogAnalyticsWorkspaceId": args.LogAnalyticsWorkspaceId,
       "LogAnalyticsSharedKey":   args.LogAnalyticsSharedKey,
       })
-   logger.info("storing Log Analytics credentials as KeyVault secret")
+   tracer.info("storing Log Analytics credentials as KeyVault secret")
    try:
       ctx.azKv.setSecret(laSecretName, laSecretValue)
    except Exception as e:
-      logger.critical("could not store Log Analytics credentials in KeyVault secret (%s)" % e)
+      tracer.critical("could not store Log Analytics credentials in KeyVault secret (%s)" % e)
       sys.exit(ERROR_SETTING_KEYVAULT_SECRET)
 
    hanaDetails = json.loads(hanaSecretValue)
    if not hanaDetails["HanaDbPassword"]:
-      logger.info("no HANA password provided; need to fetch password from separate KeyVault")
+      tracer.info("no HANA password provided; need to fetch password from separate KeyVault")
       hanaDetails["HanaDbPassword"] = ctx.fetchHanaPasswordFromKeyVault(
          hanaDetails["HanaDbPasswordKeyVaultUrl"],
          hanaDetails["PasswordKeyVaultMsiClientId"])
 
    # Check connectivity to HANA instance
-   logger.info("connecting to HANA instance to run test query")
+   tracer.info("connecting to HANA instance to run test query")
    try:
-      hana = SapHana(hanaDetails = hanaDetails)
+      hana = SapHana(tracer, hanaDetails = hanaDetails)
       hana.connect()
       hana.runQuery("SELECT 0 FROM DUMMY")
       hana.disconnect()
    except Exception as e:
-      logger.critical("could not connect to HANA instance and run test query (%s)" % e)
+      tracer.critical("could not connect to HANA instance and run test query (%s)" % e)
       sys.exit(ERROR_HANA_CONNECTION)
 
-   logger.info("onboarding payload successfully completed")
+   tracer.info("onboarding payload successfully completed")
    return
 
 def monitor(args):
@@ -341,28 +281,28 @@ def monitor(args):
      - Emit metrics as custom log to Azure Log Analytics
    (To be executed as cronjob after all resources are deployed.)
    """
-   logger.info("starting monitor payload")
+   tracer.info("starting monitor payload")
    ctx.parseSecrets()
    # TODO(tniek) - proper handling of source connection types
    for h in ctx.hanaInstances:
       try:
          h.connect()
       except Exception as e:
-         logger.critical("could not connect to HANA instance (%s)" % e)
+         tracer.critical("could not connect to HANA instance (%s)" % e)
          sys.exit(ERROR_HANA_CONNECTION)
 
       for c in ctx.availableChecks:
          if not c.state["isEnabled"]:
-            logger.info("check %s_%s has been disabled, skipping" % (c.prefix, c.name))
+            tracer.info("check %s_%s has been disabled, skipping" % (c.prefix, c.name))
             continue
          lastRunLocal = c.state["lastRunLocal"]
-         logger.debug("lastRunLocal=%s; frequencySecs=%d; currentLocal=%s" % \
+         tracer.debug("lastRunLocal=%s; frequencySecs=%d; currentLocal=%s" % \
             (lastRunLocal, c.frequencySecs, datetime.utcnow()))
          if lastRunLocal and \
             lastRunLocal + timedelta(seconds=c.frequencySecs) > datetime.utcnow():
-            logger.info("check %s_%s is not due yet, skipping" % (c.prefix, c.name))
+            tracer.info("check %s_%s is not due yet, skipping" % (c.prefix, c.name))
             continue
-         logger.info("running check %s_%s" % (c.prefix, c.name))
+         tracer.info("running check %s_%s" % (c.prefix, c.name))
          resultJson = c.run(h)
          ctx.azLa.ingest(c.customLog, resultJson, c.colTimeGenerated)
       ctx.writeStateFile()
@@ -370,20 +310,10 @@ def monitor(args):
       try:
          h.disconnect()
       except Exception as e:
-         logger.error("could not disconnect from HANA instance (%s)" % e)
+         tracer.error("could not disconnect from HANA instance (%s)" % e)
 
-   logger.info("monitor payload successfully completed")
+   tracer.info("monitor payload successfully completed")
    return
-
-def initLogger(args):
-   """
-   Initialize the global logger object
-   """
-   if args.verbose:
-      LOG_CONFIG["handlers"]["console"]["formatter"] = "detailed"
-      LOG_CONFIG["handlers"]["console"]["level"] = logging.DEBUG
-   logging.config.dictConfig(LOG_CONFIG)
-   return logging.getLogger(__name__)
 
 def ensureDirectoryStructure():
    """
@@ -402,7 +332,7 @@ def main():
    """
    Main method with arg parser
    """
-   global ctx, logger
+   global ctx, tracer
    ensureDirectoryStructure()
    parser = argparse.ArgumentParser(description="SAP Monitor Payload")
    parser.add_argument("--verbose", action="store_true", dest="verbose", help="run in verbose mode") 
@@ -423,11 +353,11 @@ def main():
    monParser  = subParsers.add_parser("monitor", description="Monitor payload", help="Execute the monitoring payload")
    monParser.set_defaults(func=monitor)
    args = parser.parse_args()
-   logger = initLogger(args)
+   tracer = tracing.initTracer(args)
    ctx = _Context(args.command)
    args.func(args)
 
-logger = None
+tracer = None
 ctx    = None
 if __name__ == "__main__":
    main()

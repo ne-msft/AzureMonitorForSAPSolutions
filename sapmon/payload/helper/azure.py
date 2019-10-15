@@ -21,49 +21,49 @@ class AzureInstanceMetadataService:
    headers = {"Metadata": "true"}
 
    @staticmethod
-   def _sendRequest(logger, endpoint, params = {}, headers = {}):
+   def _sendRequest(tracer, endpoint, params = {}, headers = {}):
       params.update(AzureInstanceMetadataService.params)
       headers.update(AzureInstanceMetadataService.headers)
       return REST.sendRequest(
-         logger,
+         tracer,
          "%s/%s" % (AzureInstanceMetadataService.uri, endpoint),
          params  = params,
          headers = headers,
          )
 
    @staticmethod
-   def getComputeInstance(logger, operation):
+   def getComputeInstance(tracer, operation):
       """
       Get the compute instance for the current VM via IMS
       """
-      logger.info("getting compute instance")      
+      tracer.info("getting compute instance")      
       computeInstance = None
       try:
          computeInstance = AzureInstanceMetadataService._sendRequest(
-            logger,
+            tracer,
             "instance",
             headers = {"User-Agent": "SAP Monitor/%s (%s)" % (PAYLOAD_VERSION, operation)}
             )["compute"]
-         logger.debug("computeInstance=%s" % computeInstance)
+         tracer.debug("computeInstance=%s" % computeInstance)
       except Exception as e:
-         logger.error("could not obtain instance metadata (%s)" % e)
+         tracer.error("could not obtain instance metadata (%s)" % e)
       return computeInstance
 
    @staticmethod
-   def getAuthToken(logger, resource, msiClientId = None):
+   def getAuthToken(tracer, resource, msiClientId = None):
       """
       Get an authentication token via IMDS
       """
-      logger.info("getting auth token for resource=%s%s" % (resource, ", msiClientId=%s" % msiClientId if msiClientId else ""))
+      tracer.info("getting auth token for resource=%s%s" % (resource, ", msiClientId=%s" % msiClientId if msiClientId else ""))
       authToken = None
       try:
          authToken = AzureInstanceMetadataService._sendRequest(
-            logger,
+            tracer,
             "identity/oauth2/token",
             params = {"resource": resource, "client_id": msiClientId}
             )["access_token"]
       except Exception as e:
-         logger.critical("could not get auth token (%s)" % e)
+         tracer.critical("could not get auth token (%s)" % e)
          sys.exit(ERROR_GETTING_AUTH_TOKEN)
       return authToken
 
@@ -74,14 +74,14 @@ class AzureKeyVault:
    Provide access to an Azure KeyVault instance
    """
    params = {"api-version": "7.0"}
-   logger = None
+   tracer = None
 
-   def __init__(self, logger, kvName, msiClientId = None):
-      self.logger  = logger
-      self.logger.info("initializing KeyVault %s" % kvName)
+   def __init__(self, tracer, kvName, msiClientId = None):
+      self.tracer  = tracer
+      self.tracer.info("initializing KeyVault %s" % kvName)
       self.kvName  = kvName
       self.uri     = "https://%s.vault.azure.net" % kvName
-      self.token   = AzureInstanceMetadataService.getAuthToken(self.logger, "https://vault.azure.net", msiClientId)
+      self.token   = AzureInstanceMetadataService.getAuthToken(self.tracer, "https://vault.azure.net", msiClientId)
       self.headers = {
          "Authorization": "Bearer %s" % self.token,
          "Content-Type":  "application/json"
@@ -92,7 +92,7 @@ class AzureKeyVault:
       Easy access to KeyVault REST endpoints
       """
       response = REST.sendRequest(
-         self.logger,
+         self.tracer,
          endpoint,
          method  = method,
          params  = self.params,
@@ -107,7 +107,7 @@ class AzureKeyVault:
       """
       Set a secret in the KeyVault
       """
-      self.logger.info("setting KeyVault secret for secretName=%s" % secretName)
+      self.tracer.info("setting KeyVault secret for secretName=%s" % secretName)
       success = False
       try:
          (success, response) = self._sendRequest(
@@ -116,7 +116,7 @@ class AzureKeyVault:
             data   = json.dumps({"value": secretValue})
             )
       except Exception as e:
-         self.logger.critical("could not set KeyVault secret (%s)" % e)
+         self.tracer.critical("could not set KeyVault secret (%s)" % e)
          sys.exit(ERROR_SETTING_KEYVAULT_SECRET)
       return success
 
@@ -124,43 +124,43 @@ class AzureKeyVault:
       """
       Get the current version of a specific secret in the KeyVault
       """
-      self.logger.info("getting KeyVault secret for secretId=%s" % secretId)
+      self.tracer.info("getting KeyVault secret for secretId=%s" % secretId)
       secret = None
       try:
          (success, secret) = self._sendRequest(secretId)
       except Exception as e:
-         self.logger.error("could not get KeyVault secret for secretId=%s (%s)" % (secretId, e))
+         self.tracer.error("could not get KeyVault secret for secretId=%s (%s)" % (secretId, e))
       return secret
 
    def getCurrentSecrets(self):
       """
       Get the current versions of all secrets inside the customer KeyVault
       """
-      self.logger.info("getting current KeyVault secrets")
+      self.tracer.info("getting current KeyVault secrets")
       secrets = {}
       try:
          (success, kvSecrets) = self._sendRequest("%s/secrets" % self.uri)
-         self.logger.debug("kvSecrets=%s" % kvSecrets)
+         self.tracer.debug("kvSecrets=%s" % kvSecrets)
          for k in kvSecrets:
             id = k["id"].split("/")[-1]
             secrets[id] = self.getSecret(k["id"])
       except Exception as e:
-         self.logger.error("could not get current KeyVault secrets (%s)" % e)
+         self.tracer.error("could not get current KeyVault secrets (%s)" % e)
       return secrets
 
    def exists(self):
       """
       Check if a KeyVault with a specified name exists
       """
-      self.logger.info("checking if KeyVault %s exists" % self.kvName)
+      self.tracer.info("checking if KeyVault %s exists" % self.kvName)
       try:
          (success, response) = self._sendRequest("%s/secrets" % self.uri)
       except Exception as e:
-         self.logger.error("could not determine is KeyVault %s exists (%s)" % (self.kvName, e))
+         self.tracer.error("could not determine is KeyVault %s exists (%s)" % (self.kvName, e))
       if success:
-         self.logger.info("KeyVault %s exists" % self.kvName)
+         self.tracer.info("KeyVault %s exists" % self.kvName)
       else:
-         self.logger.info("KeyVault %s does not exist" % self.kvName)
+         self.tracer.info("KeyVault %s does not exist" % self.kvName)
       return success
 
 ###############################################################################
@@ -169,11 +169,11 @@ class AzureLogAnalytics:
    """
    Provide access to an Azure Log Analytics WOrkspace
    """
-   logger = None
+   tracer = None
 
-   def __init__(self, logger, workspaceId, sharedKey):
-      self.logger      = logger
-      self.logger.info("initializing Log Analytics instance")
+   def __init__(self, tracer, workspaceId, sharedKey):
+      self.tracer      = tracer
+      self.tracer.info("initializing Log Analytics instance")
       self.workspaceId = workspaceId
       self.sharedKey   = sharedKey
       self.uri         = "https://%s.ods.opinsights.azure.com/api/logs?api-version=2016-04-01" % workspaceId
@@ -199,7 +199,7 @@ x-ms-date:%s
          stringHash = encodedHash.decode("utf-8")
          return "SharedKey %s:%s" % (self.workspaceId, stringHash)
 
-      self.logger.info("ingesting telemetry into Log Analytics")
+      self.tracer.info("ingesting telemetry into Log Analytics")
       timestamp = datetime.utcnow().strftime(TIME_FORMAT_LOG_ANALYTICS)
       headers = {
          "content-type":  "application/json",
@@ -208,18 +208,18 @@ x-ms-date:%s
          "x-ms-date":     timestamp,
          "time-generated-field": colTimeGenerated,
       }
-      self.logger.debug("data=%s" % jsonData)
+      self.tracer.debug("data=%s" % jsonData)
       response = None
       try:
          response = REST.sendRequest(
-            self.logger,
+            self.tracer,
             self.uri,
             method  = requests.post,
             headers = headers,
             data    = jsonData,
             )
       except Exception as e:
-         self.logger.error("could not ingest telemetry into Log Analytics (%s)" % e)
+         self.tracer.error("could not ingest telemetry into Log Analytics (%s)" % e)
       return response
 
 ###############################################################################
@@ -233,17 +233,17 @@ class AzureStorageQueue():
     token = {}
     subscriptionId = None
     resourceGroup = None
-    logger = None
+    tracer = None
 
-    def __init__(self, logger, sapmonId, msiClientID, subscriptionId, resourceGroup):
+    def __init__(self, tracer, sapmonId, msiClientID, subscriptionId, resourceGroup):
         """
         Retrieve the name of the storage account and storage queue
         """
-        self.logger = logger
-        self.logger.info("initializing Storage Queue instance")
+        self.tracer = tracer
+        self.tracer.info("initializing Storage Queue instance")
         self.accountName = STORAGE_ACCOUNT_NAMING_CONVENTION % sapmonId
         self.name = STORAGE_QUEUE_NAMING_CONVENTION % sapmonId
-        tokenResponse = AzureInstanceMetadataService.getAuthToken(self.logger, resource="https://management.azure.com/", msiClientId=msiClientID)
+        tokenResponse = AzureInstanceMetadataService.getAuthToken(self.tracer, resource="https://management.azure.com/", msiClientId=msiClientID)
         self.token["access_token"] = tokenResponse
         self.subscriptionId = subscriptionId
         self.resourceGroup = resourceGroup
@@ -252,7 +252,7 @@ class AzureStorageQueue():
         """
         Get the access key to the storage queue
         """
-        self.logger.info("getting access key for Storage Queue")
+        self.tracer.info("getting access key for Storage Queue")
         storageclient = StorageManagementClient(credentials=BasicTokenAuthentication(self.token), subscription_id=self.subscriptionId)
         storageKeys = storageclient.storage_accounts.list_keys(resource_group_name=self.resourceGroup, account_name=self.accountName)
         if storageKeys is None or len(storageKeys.keys) <= 0 :

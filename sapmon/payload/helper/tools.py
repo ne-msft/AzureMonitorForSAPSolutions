@@ -14,12 +14,12 @@ class REST:
    """
    @staticmethod
    # TODO(tniek) - improve error handling (include HTTP status together with response)
-   def sendRequest(logger, endpoint, method = requests.get, params = {}, headers = {}, timeout = 5, data = None, debug = False):
+   def sendRequest(tracer, endpoint, method = requests.get, params = {}, headers = {}, timeout = 5, data = None, debug = False):
       if debug:
          http_client.HTTPConnection.debuglevel = 1
          logging.basicConfig()
-         logging.getLogger().setLevel(logging.DEBUG)
-         requests_log = logging.getLogger("requests.packages.urllib3")
+         logging.gettracer().setLevel(logging.DEBUG)
+         requests_log = logging.gettracer("requests.packages.urllib3")
          requests_log.setLevel(logging.DEBUG)
          requests_log.propagate = True
       try:
@@ -40,7 +40,7 @@ class REST:
             print(response.content) # poor man's logging
             response.raise_for_status()
       except Exception as e:
-         logger.error("could not send HTTP request (%s)" % e)
+         tracer.error("could not send HTTP request (%s)" % e)
          return None
 
 ###############################################################################
@@ -67,5 +67,3 @@ class JsonDecoder(json.JSONDecoder):
          except Exception as e:
             pass
       return jsonData
-
-print("HA?")
