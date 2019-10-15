@@ -67,5 +67,3 @@ class JsonDecoder(json.JSONDecoder):
          except Exception as e:
             pass
       return jsonData
-
-print("HA?")
