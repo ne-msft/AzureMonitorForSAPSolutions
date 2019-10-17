@@ -1,44 +1,103 @@
+# Python modules
+import hashlib
+import json
+import logging
+
+# Payload modules
 from const import *
 from helper.tools import *
 from provider.base import *
-import hashlib
-import json
+from typing import Dict, List
+
+# SAP HANA modules
 import pyhdb
 
 ###############################################################################
 
-class SapHanaCheck(SapmonCheck):
-   """
-   Implements a SAP HANA-specific monitoring check
-   """
-   COL_SERVER_UTC      = "_SERVER_UTC"
-   COL_TIMESERIES_UTC  = "_TIMESERIES_UTC"
-   COL_CONTENT_VERSION = "CONTENT_VERSION"
-   COL_SAPMON_VERSION  = "SAPMON_VERSION"
-   TIME_FORMAT_HANA    = "%Y-%m-%d %H:%M:%S.%f"
+# Provide access to a HANA Database (HDB) instance
+class SapHana:
+   TIMEOUT_HANA_SECS = 5
 
-   prefix       = "HANA"
+   connection = None
+   cursor = None
+   tracer = None
+
+   def __init__(self,
+                tracer: logging.Logger,
+                host: str = None,
+                port: int = None,
+                user: str = None,
+                password: str = None,
+                hanaDetails: Dict[str, str] = None):
+      self.tracer = tracer
+      self.tracer.info("initializing HANA instance")
+      if hanaDetails:
+         self.host = hanaDetails["HanaHostname"]
+         self.port = hanaDetails["HanaDbSqlPort"]
+         self.user = hanaDetails["HanaDbUsername"]
+         self.password = hanaDetails["HanaDbPassword"]
+      else:
+         self.host = host
+         self.port = port
+         self.user = user
+         self.password = password
+
+   # Connect to a HDB instance
+   def connect(self) -> None:
+      self.connection = pyhdb.Connection(host = self.host,
+                                         port = self.port,
+                                         user = self.user,
+                                         password = self.password,
+                                         timeout = self.TIMEOUT_HANA_SECS)
+      self.connection.connect()
+      self.cursor = self.connection.cursor()
+
+   # Close an open HDB connection
+   def disconnect(self) -> None:
+      self.connection.close()
+
+   # Execute a SQL query
+   def runQuery(self,
+                sql: str) -> (Dict[str, str], List[str]):
+      self.cursor.execute(sql)
+      colIndex = {col[0] : idx for idx, col in enumerate(self.cursor.description)}
+      return colIndex, self.cursor.fetchall()
+
+###############################################################################
+
+# Implements a SAP HANA-specific monitoring check
+class SapHanaCheck(SapmonCheck):
+   COL_SERVER_UTC = "_SERVER_UTC"
+   COL_TIMESERIES_UTC = "_TIMESERIES_UTC"
+   COL_CONTENT_VERSION = "CONTENT_VERSION"
+   COL_SAPMON_VERSION = "SAPMON_VERSION"
+
+   prefix = "HANA"
    isTimeSeries = False
-   colIndex     = {}
-   lastResult   = []
-   def __init__(self, tracer, hanaOptions, **kwargs):
+   colIndex = {}
+   lastResult = []
+
+   def __init__(self,
+                tracer: logging.Logger,
+                hanaOptions: Dict[str, str],
+                **kwargs):
       super().__init__(tracer, **kwargs)
-      self.query                  = hanaOptions["query"]
-      self.isTimeSeries           = hanaOptions.get("isTimeSeries", False)
-      self.colTimeGenerated       = self.COL_TIMESERIES_UTC if self.isTimeSeries else self.COL_SERVER_UTC
-      self.initialTimespanSecs    = hanaOptions.get("initialTimespanSecs", 0)
+      self.query = hanaOptions["query"]
+      self.isTimeSeries = hanaOptions.get("isTimeSeries", False)
+      self.colTimeGenerated = self.COL_TIMESERIES_UTC if self.isTimeSeries else self.COL_SERVER_UTC
+      self.initialTimespanSecs = hanaOptions.get("initialTimespanSecs", 0)
       self.state["lastRunServer"] = None
 
-   def prepareSql(self):
-      """
-      Prepare the SQL statement based on the check-specific query
-      """
+   # Prepare the SQL statement based on the check-specific query
+   def prepareSql(self) -> str:
       self.tracer.info("preparing SQL statement")
+
       # insert logic to get server UTC time (_SERVER_UTC)
       sqlTimestamp = ", '%s' AS %s, '%s' AS %s, CURRENT_UTCTIMESTAMP AS %s FROM DUMMY," % \
          (self.version, self.COL_CONTENT_VERSION, PAYLOAD_VERSION, self.COL_SAPMON_VERSION, self.COL_SERVER_UTC)
       self.tracer.debug("sqlTimestamp=%s" % sqlTimestamp)
       sql = self.query.replace(" FROM", sqlTimestamp, 1)
+
       # if time series, insert time condition
       if self.isTimeSeries:
          lastRunServer = self.state.get("lastRunServer", None)
@@ -52,7 +111,7 @@ class SapHanaCheck(SapmonCheck):
                self.tracer.error("lastRunServer=%s has not been de-serialized into a valid datetime object" % str(lastRunServer))
                return None
             try:
-               lastRunServerUtc = "'%s'" % lastRunServer.strftime(self.TIME_FORMAT_HANA)
+               lastRunServerUtc = "'%s'" % lastRunServer.strftime(TIME_FORMAT_HANA)
             except:
                self.tracer.error("could not format lastRunServer=%s into HANA format" % str(lastRunServer))
                return None
@@ -61,25 +120,26 @@ class SapHanaCheck(SapmonCheck):
          self.tracer.debug("lastRunServerUtc = %s" % lastRunServerUtc)
          sql = sql.replace("{lastRunServerUtc}", lastRunServerUtc, 1)
          self.tracer.debug("sql=%s" % sql)
-         # sys.exit()
+
       return sql
 
-   def run(self, hana):
-      """
-      Run this SAP HANA-specific check
-      """
+   # Run this SAP HANA-specific check
+   def run(self,
+           hana: SapHana) -> str:
       self.tracer.info("running HANA SQL query")
       sql = self.prepareSql()
+
+      # Only run this and update state if the prepared SQL is non-empty
       if sql:
          self.colIndex, self.lastResult = hana.runQuery(sql)
          self.updateState(hana)
+
+      # But still always convert into a JSON string
       resultJson = self.convertResultIntoJson()
       return resultJson
 
-   def calculateResultHash(self):
-      """
-      Calculate the MD5 hash of a result set
-      """
+   # Calculate the MD5 hash of a result set
+   def calculateResultHash(self) -> str:
       self.tracer.info("calculating SQL result hash")
       resultHash = None
       if len(self.lastResult) == 0:
@@ -92,13 +152,14 @@ class SapHanaCheck(SapmonCheck):
             self.tracer.error("could not calculate result hash (%s)" % e)
       return resultHash
 
+   # Convert last result into a JSON string (as required by Log Analytics Data Collector API)
    def convertResultIntoJson(self):
-      """
-      Convert the last query result into a JSON-formatted string (as required by Log Analytics)
-      """
       self.tracer.info("converting result set into JSON")
-      logData  = []
+      logData = []
+      # In case we cannot convert, the JSON string would just be "{}"
       jsonData = "{}"
+
+      # Iterate through all rows of the last result
       for r in self.lastResult:
          logItem = {}
          for c in self.colIndex.keys():
@@ -111,12 +172,12 @@ class SapHanaCheck(SapmonCheck):
          self.tracer.debug("resultJson=%s" % str(resultJson))
       except Exception as e:
          self.tracer.error("could not encode logItem=%s into JSON (%s)" % (logItem, e))
+
       return resultJson
 
-   def updateState(self, hana):
-      """
-      Update the internal state of this check (including last run times)
-      """
+   # Update the internal state of this check (including last run times)
+   def updateState(self,
+                   hana: SapHana) -> bool:
       self.tracer.info("updating internal state of check %s_%s" % (self.prefix, self.name))
       self.state["lastRunLocal"] = datetime.utcnow()
       if len(self.lastResult) == 0:
@@ -126,57 +187,3 @@ class SapHanaCheck(SapmonCheck):
       self.state["lastResultHash"] = self.calculateResultHash()
       self.tracer.info("internal state successfully updated")
       return True
-
-###############################################################################
-
-class SapHana:
-   """
-   Provide access to a HANA Database (HDB) instance
-   """
-   TIMEOUT_HANA_SECS = 5
-
-   connection = None
-   cursor     = None
-   tracer     = None
-   def __init__(self, tracer, host = None, port = None, user = None, password = None, hanaDetails = None):
-      self.tracer = tracer
-      self.tracer.info("initializing HANA instance")
-      if hanaDetails:
-         self.host     = hanaDetails["HanaHostname"]
-         self.port     = hanaDetails["HanaDbSqlPort"]
-         self.user     = hanaDetails["HanaDbUsername"]
-         self.password = hanaDetails["HanaDbPassword"]
-      else:
-         self.host     = host
-         self.port     = port
-         self.user     = user
-         self.password = password
-
-   def connect(self):
-      """
-      Connect to a HDB instance
-      """
-      self.connection = pyhdb.Connection(
-         host = self.host,
-         port = self.port,
-         user = self.user,
-         password = self.password,
-         timeout = self.TIMEOUT_HANA_SECS,
-         )
-      self.connection.connect()
-      self.cursor = self.connection.cursor()
-
-   def disconnect(self):
-      """
-      Close an open HDB connection
-      """
-      self.connection.close()
-
-   def runQuery(self, sql):
-      """
-      Execute a SQL query
-      """
-      self.cursor.execute(sql)
-      colIndex = {col[0] : idx for idx, col in enumerate(self.cursor.description)}
-      return colIndex, self.cursor.fetchall()
-
