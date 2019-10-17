@@ -66,7 +66,7 @@ class tracing:
             protocol = "https",
             queue = storageQueue.name
             )
-         queueStorageLogHandler.level = DEFAULT_QUEUE_TRACER_LEVEL
+         queueStorageLogHandler.level = DEFAULT_QUEUE_TRACE_LEVEL
          formatter = logging.Formatter(tracing.config["formatters"]["detailed"]["format"])
          queueStorageLogHandler.setFormatter(formatter)
       except Exception as e:
