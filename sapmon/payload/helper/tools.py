@@ -1,21 +1,31 @@
-from const import *
+# Python modules
 from datetime import date, datetime, timedelta
 import decimal
 import http.client as http_client
 import json
 import logging
 import requests
+from typing import Callable, Dict, Optional
+
+# Payload modules
+from const import *
 
 ###############################################################################
 
+# Provide access to a REST endpoint
 class REST:
-   """
-   Provide access to a REST endpoint
-   """
    @staticmethod
-   # TODO(tniek) - improve error handling (include HTTP status together with response)
-   def sendRequest(tracer, endpoint, method = requests.get, params = {}, headers = {}, timeout = 5, data = None, debug = False):
+   # TODO - improve error handling (include HTTP status together with response)
+   def sendRequest(tracer: logging.Logger,
+                   endpoint: str,
+                   method: Callable = requests.get,
+                   params: Optional[Dict[str, str]] = None,
+                   headers: Optional[Dict[str, str]] = None,
+                   timeout: int = 5,
+                   data: bytes = None,
+                   debug: bool = False) -> str:
       if debug:
+         # TODO - improve tracing
          http_client.HTTPConnection.debuglevel = 1
          logging.basicConfig()
          logging.gettracer().setLevel(logging.DEBUG)
@@ -23,13 +33,12 @@ class REST:
          requests_log.setLevel(logging.DEBUG)
          requests_log.propagate = True
       try:
-         response = method(
-            endpoint,
-            params  = params,
-            headers = headers,
-            timeout = timeout,
-            data    = data,
-            )
+         response = method(endpoint,
+                           params = params if params else {},
+                           headers = headers if headers else {},
+                           timeout = timeout,
+                           data = data)
+         # Only accept 200 OK
          if response.status_code == requests.codes.ok:
             contentType = response.headers.get("content-type")
             if contentType and contentType.find("json") >= 0:
@@ -37,7 +46,7 @@ class REST:
             else:
                return response.content
          else:
-            print(response.content) # poor man's logging
+            tracer.debug(response.content) # poor man's logging
             response.raise_for_status()
       except Exception as e:
          tracer.error("could not send HTTP request (%s)" % e)
@@ -45,22 +54,20 @@ class REST:
 
 ###############################################################################
 
+# Helper class to serialize datetime and Decimal objects into JSON
 class JsonEncoder(json.JSONEncoder):
-   """
-   Helper class to serialize datetime and Decimal objects into JSON
-   """
-   def default(self, o):
+   # Overwrite encoder for Decimal and datetime objects
+   def default(self,
+               o: object) -> object:
       if isinstance(o, decimal.Decimal):
          return float(o)
       elif isinstance(o, (datetime, date)):
          return datetime.strftime(o, TIME_FORMAT_JSON)
       return super(_JsonEncoder, self).default(o)
 
+# Helper class to de-serialize JSON into datetime and Decimal objects
 class JsonDecoder(json.JSONDecoder):
-   """
-   Helper class to de-serialize JSON into datetime and Decimal objects
-   """
-   def datetimeHook(jsonData):
+   def datetimeHook(jsonData: Dict[str, str]) -> Dict[str, str]:
       for (k, v) in jsonData.items():
          try:
             jsonData[k] = datetime.strptime(v, TIME_FORMAT_JSON)
