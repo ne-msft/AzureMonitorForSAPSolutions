@@ -1,4 +1,5 @@
-# This image contains the data collector scripts to collect telemetry from customers SAP solutions. The scripts can be found in [Azure Monitor For SAP Solutions](https://github.com/Azure/AzureMonitorForSAPSolutions)
+Dockerfile to create configured images containing the data collector scripts to collect telemetry from customers SAP solutions. The scripts can be found in [Azure Monitor For SAP Solutions](https://github.com/Azure/AzureMonitorForSAPSolutions)
+
 # How to run
 
 ## Onboard
