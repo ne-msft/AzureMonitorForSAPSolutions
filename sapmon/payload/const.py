@@ -3,7 +3,7 @@ import logging
 import os
 
 # Version of the payload script
-PAYLOAD_VERSION = "0.7.2"
+PAYLOAD_VERSION = "0.8.0"
 
 # Default file/directory locations
 PATH_PAYLOAD       = os.path.dirname(os.path.realpath(__file__))

@@ -4,6 +4,8 @@ from azure_storage_logging.handlers import QueueStorageHandler
 
 # Python modules
 import argparse
+from collections import OrderedDict
+import json
 import logging
 import logging.config
 from typing import Callable, Dict, Optional
@@ -12,12 +14,66 @@ from typing import Callable, Dict, Optional
 from const import *
 from helper.azure import *
 
+# Formats a log/trace payload as JSON-formatted string
+class JsonFormatter(logging.Formatter):
+   def __init__(self, fields = [], datefmt=None, customJson=None):
+      logging.Formatter.__init__(self, None, datefmt)
+      self.fields = fields
+      self.customJson = customJson
+
+   # Overridden from the parent class to look for the asctime attribute in the fields attribute
+   def usesTime(self) -> bool:
+      return "asctime" in self.fields.values()
+
+   # Formats time using a specific date format
+   def _formatTime(self,
+                   record: logging.LogRecord) -> None:
+      if self.usesTime():
+         record.asctime = self.formatTime(record, self.datefmt)
+
+   # Combines any supplied fields with the log record msg field into an object to convert to JSON 
+   def _getJsonData(self,
+                    record: logging.LogRecord) -> OrderedDict():
+      if len(self.fields.keys()) > 0:
+         fields = []
+         for x in sorted(self.fields.keys()):
+            fields.append((x, getattr(record, self.fields[x])))
+         fields.append(("msg", record.msg))
+
+         # An OrderedDict is used to ensure that the converted data appears in the same order for every record
+         return OrderedDict(fields)
+      else:
+         return record.msg
+
+   # Overridden from the parent class to take a log record and output a JSON-formatted string
+   def format(self,
+              record: logging.LogRecord) -> str:
+      self._formatTime(record)
+      jsonData = self._getJsonData(record)
+      formattedJson = json.dumps(jsonData, cls=self.customJson)
+      return formattedJson
+
 # Helper class to enable all kinds of tracing
 class tracing:
+   sapmonIdFilterEmpty = '"sapmonId": ""'
    config = {
        "version": 1,
        "disable_existing_loggers": True,
        "formatters": {
+           "json": {
+               "class": "helper.tracing.JsonFormatter",
+               "fields": {
+                   "pid": "process",
+                   "timestamp": "asctime",
+                   "traceLevel": "levelname",
+                   "module": "filename",
+                   "lineNum": "lineno",
+                   "function": "funcName",
+                   # Custom (payload-specific) fields below
+                   "payloadVersion": "payloadversion",
+                   "sapmonId": "sapmonid"
+               }
+           },
            "detailed": {
                "format": "[%(process)d] %(asctime)s %(levelname).1s %(filename)s:%(lineno)d %(message)s"
            },
@@ -26,6 +82,11 @@ class tracing:
            }
        },
        "handlers": {
+           "consolex": {
+               "class": "logging.StreamHandler",
+               "formatter": "simple",
+               "level": DEFAULT_CONSOLE_TRACE_LEVEL
+           },
            "console": {
                "class": "logging.StreamHandler",
                "formatter": "simple",
@@ -59,6 +120,15 @@ class tracing:
    @staticmethod
    def addQueueLogHandler(tracer: logging.Logger,
                           ctx) -> None:
+
+      # Provide access to custom (payload-specific) fields
+      oldFactory = logging.getLogRecordFactory()
+      def recordFactory(*args, **kwargs):
+         record = oldFactory(*args, **kwargs)
+         record.sapmonid = ctx.sapmonId
+         record.payloadversion = PAYLOAD_VERSION
+         return record
+
       tracer.info("adding storage queue log handler")
       try:
          storageQueue = AzureStorageQueue(tracer,
@@ -72,8 +142,10 @@ class tracing:
                                                       protocol = "https",
                                                       queue = storageQueue.name)
          queueStorageLogHandler.level = DEFAULT_QUEUE_TRACE_LEVEL
-         formatter = logging.Formatter(tracing.config["formatters"]["detailed"]["format"])
-         queueStorageLogHandler.setFormatter(formatter)
+         jsonFormatter = JsonFormatter(tracing.config["formatters"]["json"]["fields"])
+         queueStorageLogHandler.setFormatter(jsonFormatter)
+         logging.setLogRecordFactory(recordFactory)
+
       except Exception as e:
          tracer.error("could not add handler for the storage queue logging (%s) " % e)
          return
