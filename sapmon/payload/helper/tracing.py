@@ -55,7 +55,6 @@ class JsonFormatter(logging.Formatter):
 
 # Helper class to enable all kinds of tracing
 class tracing:
-   sapmonIdFilterEmpty = '"sapmonId": ""'
    config = {
        "version": 1,
        "disable_existing_loggers": True,
