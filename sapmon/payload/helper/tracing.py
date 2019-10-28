@@ -16,14 +16,17 @@ from helper.azure import *
 
 # Formats a log/trace payload as JSON-formatted string
 class JsonFormatter(logging.Formatter):
-   def __init__(self, fields = [], datefmt=None, customJson=None):
+   def __init__(self,
+                fieldMapping: Dict[str, str] = {},
+                datefmt: Optional[str] = None,
+                customJson: Optional[json.JSONEncoder] = None):
       logging.Formatter.__init__(self, None, datefmt)
-      self.fields = fields
+      self.fieldMapping = fieldMapping
       self.customJson = customJson
 
    # Overridden from the parent class to look for the asctime attribute in the fields attribute
    def usesTime(self) -> bool:
-      return "asctime" in self.fields.values()
+      return "asctime" in self.fieldMapping.values()
 
    # Formats time using a specific date format
    def _formatTime(self,
@@ -34,14 +37,15 @@ class JsonFormatter(logging.Formatter):
    # Combines any supplied fields with the log record msg field into an object to convert to JSON 
    def _getJsonData(self,
                     record: logging.LogRecord) -> OrderedDict():
-      if len(self.fields.keys()) > 0:
-         fields = []
-         for x in sorted(self.fields.keys()):
-            fields.append((x, getattr(record, self.fields[x])))
-         fields.append(("msg", record.msg))
+      if len(self.fieldMapping.keys()) > 0:
+         # Build a temporary list of tuples with the actual content for each field
+         jsonContent = []
+         for f in sorted(self.fieldMapping.keys()):
+            jsonContent.append((f, getattr(record, self.fieldMapping[f])))
+         jsonContent.append(("msg", record.msg))
 
          # An OrderedDict is used to ensure that the converted data appears in the same order for every record
-         return OrderedDict(fields)
+         return OrderedDict(jsonContent)
       else:
          return record.msg
 
@@ -61,7 +65,7 @@ class tracing:
        "formatters": {
            "json": {
                "class": "helper.tracing.JsonFormatter",
-               "fields": {
+               "fieldMapping": {
                    "pid": "process",
                    "timestamp": "asctime",
                    "traceLevel": "levelname",
@@ -141,7 +145,7 @@ class tracing:
                                                       protocol = "https",
                                                       queue = storageQueue.name)
          queueStorageLogHandler.level = DEFAULT_QUEUE_TRACE_LEVEL
-         jsonFormatter = JsonFormatter(tracing.config["formatters"]["json"]["fields"])
+         jsonFormatter = JsonFormatter(tracing.config["formatters"]["json"]["fieldMapping"])
          queueStorageLogHandler.setFormatter(jsonFormatter)
          logging.setLogRecordFactory(recordFactory)
 
