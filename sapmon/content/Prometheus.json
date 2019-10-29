@@ -1,0 +1,33 @@
+{
+        "contentType": "Prometheus",
+        "contentVersion": "0.1.0",
+        "checks": [
+                {
+                        "name": "PrometheusGenericExporter",
+                        "description": "Export data from any prometheus exporter",
+                        "customLog": "Prometheus_GenericExporter",
+                        "frequencySecs": 15,
+                        "prometheusOptions": {
+                            
+                        }
+                },
+                {
+                        "name": "NodeExporter",
+                        "description": "Export Data from the generic prometheus node exporter",
+                        "customLog": "Prometheus_NodeExporter",
+                        "frequencySecs": 15,
+                        "prometheusOptions": {
+                                "includePrefixes": "^node_"
+                        }
+                },
+                {
+                        "name": "LinuxHACLusterExporter",
+                        "description": "Export Data from the hacluster specific prometheus exporter",
+                        "customLog": "Prometheus_HaClusterExporter",
+                        "frequencySecs": 15,
+                        "prometheusOptions": {
+                                "includePrefixes": "^ha_cluster_"
+                        }
+                }
+        ]
+}

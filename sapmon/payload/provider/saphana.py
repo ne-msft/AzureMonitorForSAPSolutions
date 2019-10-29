@@ -15,7 +15,7 @@ from hdbcli import dbapi
 ###############################################################################
 
 # Provide access to a HANA Database (HDB) instance
-class SapHana:
+class SapHana(SapmonConnection):
    TIMEOUT_HANA_SECS = 5
 
    connection = None
@@ -24,23 +24,18 @@ class SapHana:
 
    def __init__(self,
                 tracer: logging.Logger,
-                host: str = None,
-                port: int = None,
-                user: str = None,
-                password: str = None,
-                hanaDetails: Dict[str, str] = None):
+                connectionDetails: Dict[str, str]):
       self.tracer = tracer
       self.tracer.info("initializing HANA instance")
-      if hanaDetails:
-         self.host = hanaDetails["HanaHostname"]
-         self.port = hanaDetails["HanaDbSqlPort"]
-         self.user = hanaDetails["HanaDbUsername"]
-         self.password = hanaDetails["HanaDbPassword"]
-      else:
-         self.host = host
-         self.port = port
-         self.user = user
-         self.password = password
+      self.host = connectionDetails["HanaHostname"]
+      self.port = connectionDetails["HanaDbSqlPort"]
+      self.user = connectionDetails["HanaDbUsername"]
+      self.password = connectionDetails["HanaDbPassword"]
+      self.enabledChecks = set(connectionDetails["enabledChecks"] or [])
+
+   def isCheckEnabled(self, check):
+      self.tracer.info("Checking %s in set %s" % (check.fullname, self.enabledChecks))
+      return check.fullname in self.enabledChecks
 
    # Connect to a HDB instance
    def connect(self) -> None:
@@ -71,7 +66,6 @@ class SapHanaCheck(SapmonCheck):
    COL_CONTENT_VERSION = "CONTENT_VERSION"
    COL_SAPMON_VERSION = "SAPMON_VERSION"
 
-   prefix = "HANA"
    isTimeSeries = False
    colIndex = {}
    lastResult = []
@@ -80,7 +74,7 @@ class SapHanaCheck(SapmonCheck):
                 tracer: logging.Logger,
                 hanaOptions: Dict[str, str],
                 **kwargs):
-      super().__init__(tracer, **kwargs)
+      super().__init__(tracer, prefix = "HANA", **kwargs)
       self.query = hanaOptions["query"]
       self.isTimeSeries = hanaOptions.get("isTimeSeries", False)
       self.colTimeGenerated = self.COL_TIMESERIES_UTC if self.isTimeSeries else self.COL_SERVER_UTC

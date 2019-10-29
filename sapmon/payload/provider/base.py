@@ -4,12 +4,17 @@ import logging
 
 ###############################################################################
 
+# This is a wrapper to identify valid Connections
+class SapmonConnection(ABC):
+    pass
+
 # Base class for all SAP Monitor checks
 class SapmonCheck(ABC):
    description = None
    customLog = None
    frequencySecs = None
    name = None
+   prefix = None
    state = {}
    tracer = None
    version = None
@@ -17,6 +22,7 @@ class SapmonCheck(ABC):
    def __init__(self,
                 tracer: logging.Logger,
                 version: str,
+                prefix: str,
                 name: str,
                 description: str,
                 customLog: str,
@@ -25,6 +31,7 @@ class SapmonCheck(ABC):
       self.tracer = tracer
       self.version = version
       self.name = name
+      self.prefix = prefix
       self.description = description
       self.customLog = customLog
       self.frequencySecs = frequencySecs
@@ -32,6 +39,10 @@ class SapmonCheck(ABC):
          "isEnabled":    enabled,
          "lastRunLocal": None
       }
+   
+   @property
+   def fullname(self):
+      return "%s_%s" % (self.prefix, self.name)
 
    # Method that gets called when this check is executed
    @abstractmethod

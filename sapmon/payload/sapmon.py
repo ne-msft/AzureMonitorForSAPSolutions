@@ -22,19 +22,21 @@ from helper.azure import *
 from helper.tools import *
 from helper.tracing import *
 from provider.saphana import *
+from provider.prometheus import *
 
 ###############################################################################
 
 # TODO - refactor the list of content types into provider
 sapmonContentTypes = {
-   "HANA": "SapHanaCheck"
+   "HANA": "SapHanaCheck",
+   "Prometheus": "PrometheusCheck"
 }
 
 # Internal context handler
 class _Context(object):
    azKv = None
    availableChecks = []
-   hanaInstances = []
+   monitoringConnections = []
    sapmonId = None
    vmInstance = None
    vmTage = None
@@ -197,13 +199,35 @@ class _Context(object):
 
       # Extract HANA instance(s) from current KeyVault secrets
       secrets = self.azKv.getCurrentSecrets()
-      hanaSecrets = sliceDict(secrets, "SapHana-")
+      instanceSecrets = sliceDict(secrets, "SapHana-")
+      instanceSecrets.update(sliceDict(secrets, "X-SapHana-"))
 
       # Create HANA instances for all configurations stored as secrets
-      for h in hanaSecrets.keys():
-         hanaDetails = json.loads(hanaSecrets[h])
-         if not hanaDetails["HanaDbPassword"]:
-            appTracer.info("no HANA password provided; need to fetch password from separate KeyVault")
+      for h in instanceSecrets.keys():
+         instanceDetails = json.loads(instanceSecrets[h])
+
+         # Upgrade un-versioned configs to 0.1
+         if not "ConfigVersion" in instanceDetails:
+            instanceDetails["ConfigVersion"] = "0.1"
+            instanceDetails["ConnectionType"] = "SapHana"
+            instanceDetails["enabledChecks"] = ("HANA_HostConfig",
+                                                "HANA_LoadHistory",
+                                                "HANA_SystemAvailability")
+         # This is a legacy secret with no information on the content type
+         # Assume this to be a SapHana connection
+         if instanceDetails["ConfigVersion"] == "0.1":
+            # This is a hack to keep the former behaviour working
+            if (instanceDetails["ConnectionType"] == "SapHana" and
+                not instanceDetails["HanaDbPassword"]):
+               appTracer.info("no HANA password provided; need to fetch password from separate KeyVault")
+               try:
+                  password = self.fetchHanaPasswordFromKeyVault(instanceDetails["HanaDbPasswordKeyVaultUrl"],
+                                                                instanceDetails["PasswordKeyVaultMsiClientId"])
+                  instanceDetails["HanaDbPassword"] = password
+                  appTracer.debug("retrieved HANA password successfully from KeyVault")
+               except Exception as e:
+                  appTracer.critical("could not fetch HANA password (instance=%s) from KeyVault (%s)" % (h, e))
+                  sys.exit(ERROR_GETTING_HANA_CREDENTIALS)
             try:
                password = self.fetchHanaPasswordFromKeyVault(hanaDetails["HanaDbPasswordKeyVaultUrl"],
                                                              hanaDetails["PasswordKeyVaultMsiClientId"])
@@ -280,15 +304,15 @@ def onboard(args: str) -> None:
 
    # Check connectivity to HANA instance
    # TODO - this validation check should be part of the (HANA) provider
-   hanaDetails = json.loads(hanaSecretValue)
-   if not hanaDetails["HanaDbPassword"]:
+   instanceDetails = json.loads(hanaSecretValue)
+   if not instanceDetails["HanaDbPassword"]:
       appTracer.info("no HANA password provided; need to fetch password from separate KeyVault")
-      hanaDetails["HanaDbPassword"] = ctx.fetchHanaPasswordFromKeyVault(
-         hanaDetails["HanaDbPasswordKeyVaultUrl"],
-         hanaDetails["PasswordKeyVaultMsiClientId"])
+      instanceDetails["HanaDbPassword"] = ctx.fetchHanaPasswordFromKeyVault(
+         instanceDetails["HanaDbPasswordKeyVaultUrl"],
+         instanceDetails["PasswordKeyVaultMsiClientId"])
    appTracer.info("connecting to HANA instance to run test query")
    try:
-      hana = SapHana(appTracer, hanaDetails = hanaDetails)
+      hana = SapHana(appTracer, instanceDetails = instanceDetails)
       hana.connect()
       hana.runQuery("SELECT 0 FROM DUMMY")
       # TODO - check for permissions on monitoring tables
@@ -307,7 +331,7 @@ def monitor(args: str) -> None:
    # TODO - proper handling of content and connection types
 
    # Iterate through all configured HANA instances
-   for h in ctx.hanaInstances:
+   for h in ctx.monitoringConnections:
       try:
          h.connect()
       except Exception as e:
@@ -317,7 +341,7 @@ def monitor(args: str) -> None:
       # Actual payload:
       # Execute all checks that are due and ingest their results
       for c in ctx.availableChecks:
-         if not c.state["isEnabled"]:
+         if not h.isCheckEnabled(c):
             appTracer.info("check %s_%s has been disabled, skipping" % (c.prefix, c.name))
             continue
 
