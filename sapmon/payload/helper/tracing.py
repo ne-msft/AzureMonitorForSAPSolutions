@@ -175,9 +175,6 @@ class tracing:
                                                            account_key = storageKey,
                                                            protocol = "https",
                                                            queue = storageQueue.name)
-           # customerMetricsLogHandler.level = DEFAULT_QUEUE_TRACE_LEVEL
-           # formatter = logging.Formatter(tracing.config["formatters"]["detailed"]["format"])
-           # queueStorageLogHandler.setFormatter(formatter)
        except Exception as e:
            tracer.error("could not add handler for the storage queue logging (%s) " % e)
            return
