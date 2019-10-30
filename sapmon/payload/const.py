@@ -25,9 +25,10 @@ DEFAULT_FILE_TRACE_LEVEL    = logging.INFO
 DEFAULT_QUEUE_TRACE_LEVEL   = logging.DEBUG
 
 # Naming conventions for generated resources
-KEYVAULT_NAMING_CONVENTION        = "sapmon-kv-%s"
-STORAGE_ACCOUNT_NAMING_CONVENTION = "sapmonsto%s"
-STORAGE_QUEUE_NAMING_CONVENTION   = "sapmon-que-%s"
+KEYVAULT_NAMING_CONVENTION               = "sapmon-kv-%s"
+STORAGE_ACCOUNT_NAMING_CONVENTION        = "sapmonsto%s"
+STORAGE_QUEUE_NAMING_CONVENTION          = "sapmon-que-%s"
+CUSTOMER_METRICS_QUEUE_NAMING_CONVENTION = "sapmon-cmq-%s"
 
 # Error codes
 ERROR_GETTING_AUTH_TOKEN       = 10

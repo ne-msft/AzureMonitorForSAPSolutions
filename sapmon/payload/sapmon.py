@@ -38,10 +38,11 @@ class _Context(object):
    sapmonId = None
    vmInstance = None
    vmTage = None
+   enableCustomerMetrics = None
 
    def __init__(self,
                 operation: str):
-      global tracer
+      global tracer, metricsTracer
       tracer.info("initializing context")
 
       # Retrieve sapmonId via IMDS
@@ -57,6 +58,9 @@ class _Context(object):
 
       # Add storage queue log handler to tracer
       tracing.addQueueLogHandler(tracer, self)
+
+      # Initializing tracer for emitting metrics
+      metricsTracer = tracing.initCustomerMetricsTracer(tracer, self)
 
       # Get KeyVault
       self.azKv = AzureKeyVault(tracer, KEYVAULT_NAMING_CONVENTION % self.sapmonId, self.vmTags.get("SapMonMsiClientId", None))
@@ -214,6 +218,7 @@ class _Context(object):
             tracer.error("could not create HANA instance %s) (%s)" % (h, e))
             continue
          self.hanaInstances.append(hanaInstance)
+         self.enableCustomerMetrics = hanaDetails["EnableCustomerMetrics"]
 
       # Also extract Log Analytics credentials from secrets
       try:
@@ -249,6 +254,7 @@ def onboard(args: str) -> None:
       "HanaDbPasswordKeyVaultUrl":   args.HanaDbPasswordKeyVaultUrl,
       "HanaDbSqlPort":               args.HanaDbSqlPort,
       "PasswordKeyVaultMsiClientId": args.PasswordKeyVaultMsiClientId,
+      "EnableCustomerMetrics":       args.EnableCustomerMetrics,
       })
    tracer.info("storing HANA credentials as KeyVault secret")
    try:
@@ -327,6 +333,12 @@ def monitor(args: str) -> None:
          tracer.info("running check %s_%s" % (c.prefix, c.name))
          resultJson = c.run(h)
          ctx.azLa.ingest(c.customLog, resultJson, c.colTimeGenerated)
+         if ctx.enableCustomerMetrics:
+            metrics = {
+               "Type": c.customLog,
+               "Data": resultJson,
+            }
+            metricsTracer.info(metrics)
 
       # After all checks have been executed, persist their state
       ctx.writeStateFile()
@@ -414,6 +426,11 @@ def main() -> None:
                           required = False,
                           type = str,
                           help = "MSI Client ID used to get the access token from IMDS")
+   onbParser.add_argument("--EnableCustomerMetrics",
+                          required = False,
+                          type = bool,
+                          default = False,
+                          help = "Setting to enable sending metrics to Microsoft")
    args = parser.parse_args()
    tracer = tracing.initTracer(args)
    ctx = _Context(args.command)
@@ -422,6 +439,7 @@ def main() -> None:
    return
 
 tracer = None
+metricsTracer = None
 ctx = None
 if __name__ == "__main__":
    main()

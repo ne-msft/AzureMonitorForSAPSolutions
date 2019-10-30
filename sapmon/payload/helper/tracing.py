@@ -138,7 +138,8 @@ class tracing:
                                           sapmonId = ctx.sapmonId,
                                           msiClientID = ctx.vmTags.get("SapMonMsiClientId", None),
                                           subscriptionId = ctx.vmInstance["subscriptionId"],
-                                          resourceGroup = ctx.vmInstance["resourceGroupName"])
+                                          resourceGroup = ctx.vmInstance["resourceGroupName"],
+                                          queueName = STORAGE_QUEUE_NAMING_CONVENTION % ctx.sapmonId)
          storageKey = storageQueue.getAccessKey()
          queueStorageLogHandler = QueueStorageHandler(account_name=storageQueue.accountName,
                                                       account_key = storageKey,
@@ -153,5 +154,35 @@ class tracing:
          tracer.error("could not add handler for the storage queue logging (%s) " % e)
          return
 
+      queueStorageLogHandler.level = DEFAULT_QUEUE_TRACE_LEVEL
       tracer.addHandler(queueStorageLogHandler)
       return
+
+   # Initialize customer metrics tracer object
+   @staticmethod
+   def initCustomerMetricsTracer(tracer: logging.Logger,
+           ctx) -> logging.Logger:
+       tracer.info("creating customer metrics tracer object")
+       try:
+           storageQueue = AzureStorageQueue(tracer,
+                                            sapmonId = ctx.sapmonId,
+                                            msiClientID = ctx.vmTags.get("SapMonMsiClientId", None),
+                                            subscriptionId = ctx.vmInstance["subscriptionId"],
+                                            resourceGroup = ctx.vmInstance["resourceGroupName"],
+                                            queueName = CUSTOMER_METRICS_QUEUE_NAMING_CONVENTION % ctx.sapmonId)
+           storageKey = storageQueue.getAccessKey()
+           customerMetricsLogHandler = QueueStorageHandler(account_name=storageQueue.accountName,
+                                                           account_key = storageKey,
+                                                           protocol = "https",
+                                                           queue = storageQueue.name)
+           # customerMetricsLogHandler.level = DEFAULT_QUEUE_TRACE_LEVEL
+           # formatter = logging.Formatter(tracing.config["formatters"]["detailed"]["format"])
+           # queueStorageLogHandler.setFormatter(formatter)
+       except Exception as e:
+           tracer.error("could not add handler for the storage queue logging (%s) " % e)
+           return
+
+       logger = logging.getLogger("customerMetricsLogger")
+       logger.addHandler(customerMetricsLogHandler)
+       return logger
+

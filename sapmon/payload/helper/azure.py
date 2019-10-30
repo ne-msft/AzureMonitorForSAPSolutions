@@ -252,11 +252,12 @@ class AzureStorageQueue():
                  sapmonId: str,
                  msiClientID: str,
                  subscriptionId: str,
-                 resourceGroup: str):
+                 resourceGroup: str,
+                 queueName: str):
         self.tracer = tracer
         self.tracer.info("initializing Storage Queue instance")
         self.accountName = STORAGE_ACCOUNT_NAMING_CONVENTION % sapmonId
-        self.name = STORAGE_QUEUE_NAMING_CONVENTION % sapmonId
+        self.name = queueName
         tokenResponse = AzureInstanceMetadataService.getAuthToken(self.tracer,
                                                                   resource = "https://management.azure.com/",
                                                                   msiClientId = msiClientID)
