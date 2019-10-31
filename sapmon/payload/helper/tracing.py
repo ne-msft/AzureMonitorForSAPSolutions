@@ -34,7 +34,7 @@ class JsonFormatter(logging.Formatter):
       if self.usesTime():
          record.asctime = self.formatTime(record, self.datefmt)
 
-   # Combines any supplied fields with the log record msg field into an object to convert to JSON 
+   # Combines any supplied fields with the log record msg field into an object to convert to JSON
    def _getJsonData(self,
                     record: logging.LogRecord) -> OrderedDict():
       if len(self.fieldMapping.keys()) > 0:
@@ -121,8 +121,9 @@ class tracing:
 
    # Add a storage queue log handler to an existing tracer
    @staticmethod
-   def addQueueLogHandler(tracer: logging.Logger,
-                          ctx) -> None:
+   def addQueueLogHandler(
+           tracer: logging.Logger,
+           ctx) -> None:
 
       # Provide access to custom (payload-specific) fields
       oldFactory = logging.getLogRecordFactory()
@@ -131,7 +132,6 @@ class tracing:
          record.sapmonid = ctx.sapmonId
          record.payloadversion = PAYLOAD_VERSION
          return record
-
       tracer.info("adding storage queue log handler")
       try:
          storageQueue = AzureStorageQueue(tracer,
@@ -160,7 +160,8 @@ class tracing:
 
    # Initialize customer metrics tracer object
    @staticmethod
-   def initCustomerMetricsTracer(tracer: logging.Logger,
+   def initCustomerMetricsTracer(
+           tracer: logging.Logger,
            ctx) -> logging.Logger:
        tracer.info("creating customer metrics tracer object")
        try:

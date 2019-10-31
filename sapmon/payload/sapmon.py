@@ -38,32 +38,32 @@ class _Context(object):
    sapmonId = None
    vmInstance = None
    vmTage = None
-   enableCustomerMetrics = None
+   enableCustomerAnalytics = None
 
    def __init__(self,
                 operation: str):
-      global tracer, metricsTracer
-      tracer.info("initializing context")
+      global appTracer, analyticsTracer
+      appTracer.info("initializing context")
 
       # Retrieve sapmonId via IMDS
-      self.vmInstance = AzureInstanceMetadataService.getComputeInstance(tracer,
+      self.vmInstance = AzureInstanceMetadataService.getComputeInstance(appTracer,
                                                                         operation)
       self.vmTags = dict(
          map(lambda s : s.split(':'),
          self.vmInstance["tags"].split(";"))
       )
-      tracer.debug("vmTags=%s" % self.vmTags)
+      appTracer.debug("vmTags=%s" % self.vmTags)
       self.sapmonId = self.vmTags["SapMonId"]
-      tracer.debug("sapmonId=%s " % self.sapmonId)
+      appTracer.debug("sapmonId=%s " % self.sapmonId)
 
-      # Add storage queue log handler to tracer
-      tracing.addQueueLogHandler(tracer, self)
+      # Add storage queue log handler to appTracer
+      tracing.addQueueLogHandler(appTracer, self)
 
-      # Initializing tracer for emitting metrics
-      metricsTracer = tracing.initCustomerMetricsTracer(tracer, self)
+      # Initializing appTracer for emitting metrics
+      analyticsTracer = tracing.initCustomerMetricsTracer(appTracer, self)
 
       # Get KeyVault
-      self.azKv = AzureKeyVault(tracer, KEYVAULT_NAMING_CONVENTION % self.sapmonId, self.vmTags.get("SapMonMsiClientId", None))
+      self.azKv = AzureKeyVault(appTracer, KEYVAULT_NAMING_CONVENTION % self.sapmonId, self.vmTags.get("SapMonMsiClientId", None))
       if not self.azKv.exists():
          sys.exit(ERROR_KEYVAULT_NOT_FOUND)
 
@@ -73,88 +73,88 @@ class _Context(object):
  
    # Initialize all monitoring content (pre-delivered via content/*.json)
    def initMonitoringContent(self) -> None:
-      global tracer
-      tracer.info("initializing monitoring content")
+      global appTracer
+      appTracer.info("initializing monitoring content")
 
       # Iterate through content/*.json files
       for filename in os.listdir(PATH_CONTENT):
          if not filename.endswith(".json"):
             continue
          contentFullPath = "%s/%s" % (PATH_CONTENT, filename)
-         tracer.debug("contentFullPath=%s" % contentFullPath)
+         appTracer.debug("contentFullPath=%s" % contentFullPath)
          try:
             with open(contentFullPath, "r") as file:
                data = file.read()
             jsonData = json.loads(data)
          except Exception as e:
-            tracer.error("could not load content file %s (%s)" % (contentFullPath, e))
+            appTracer.error("could not load content file %s (%s)" % (contentFullPath, e))
          contentType = jsonData.get("contentType", None)
 
          # Check for required fields
          if not contentType:
-            tracer.error("content type not specified in content file %s, skipping" % contentFullPath)
+            appTracer.error("content type not specified in content file %s, skipping" % contentFullPath)
             continue
          contentVersion = jsonData.get("contentVersion", None)
          if not contentVersion:
-            tracer.error("content version not specified in content file %s, skipping" % contentFullPath)
+            appTracer.error("content version not specified in content file %s, skipping" % contentFullPath)
             continue
          checks = jsonData.get("checks", [])
          if not contentType in sapmonContentTypes:
-            tracer.error("unknown content type %s, skipping content file %s" % (contentType, contentFullPath))
+            appTracer.error("unknown content type %s, skipping content file %s" % (contentType, contentFullPath))
             continue
 
          # Iterate through all checks in the file
          for checkOptions in checks:
             try:
-               tracer.info("instantiate check of type %s" % contentType)
+               appTracer.info("instantiate check of type %s" % contentType)
                checkOptions["version"] = contentVersion
-               tracer.debug("checkOptions=%s" % checkOptions)
-               check = eval(sapmonContentTypes[contentType])(tracer, **checkOptions)
+               appTracer.debug("checkOptions=%s" % checkOptions)
+               check = eval(sapmonContentTypes[contentType])(appTracer, **checkOptions)
                self.availableChecks.append(check)
             except Exception as e:
-               tracer.error("could not instantiate new check of type %s (%s)" % (contentType, e))
+               appTracer.error("could not instantiate new check of type %s (%s)" % (contentType, e))
 
-      tracer.info("successfully loaded %d monitoring checks" % len(self.availableChecks))
+      appTracer.info("successfully loaded %d monitoring checks" % len(self.availableChecks))
       return
 
    # Get most recent state from state/sapmon.state
    def readStateFile(self) -> bool:
-      global tracer
-      tracer.info("reading state file")
+      global appTracer
+      appTracer.info("reading state file")
       success = True
       jsonData = {}
       try:
-         tracer.debug("FILENAME_STATEFILE=%s" % FILENAME_STATEFILE)
+         appTracer.debug("FILENAME_STATEFILE=%s" % FILENAME_STATEFILE)
          with open(FILENAME_STATEFILE, "r") as file:
             data = file.read()
          jsonData = json.loads(data, object_hook=JsonDecoder.datetimeHook)
       except FileNotFoundError as e:
-         tracer.warning("state file %s does not exist" % FILENAME_STATEFILE)
+         appTracer.warning("state file %s does not exist" % FILENAME_STATEFILE)
       except Exception as e:
-         tracer.error("could not read state file %s (%s)" % (FILENAME_STATEFILE, e))
+         appTracer.error("could not read state file %s (%s)" % (FILENAME_STATEFILE, e))
 
       # Iterate through all checks to parse their state
       for c in self.availableChecks:
          sectionKey = "%s_%s" % (c.prefix, c.name)
          if sectionKey in jsonData:
-            tracer.debug("parsing section %s" % sectionKey)
+            appTracer.debug("parsing section %s" % sectionKey)
             section = jsonData.get(sectionKey, {})
             for k in section.keys():
                c.state[k] = section[k]
          else:
-            tracer.warning("section %s not found in state file" % sectionKey)
+            appTracer.warning("section %s not found in state file" % sectionKey)
 
-      tracer.info("successfully parsed state file")
+      appTracer.info("successfully parsed state file")
       return success
 
    # Persist current state of all checks into state/sapmon.state
    def writeStateFile(self) -> bool:
-      global tracer
-      tracer.info("writing state file")
+      global appTracer
+      appTracer.info("writing state file")
       success  = False
       jsonData = {}
       try:
-         tracer.debug("FILENAME_STATEFILE=%s" % FILENAME_STATEFILE)
+         appTracer.debug("FILENAME_STATEFILE=%s" % FILENAME_STATEFILE)
 
          # Iterate through all checks and write their state
          for c in self.availableChecks:
@@ -164,7 +164,7 @@ class _Context(object):
             json.dump(jsonData, file, indent=3, cls=JsonEncoder)
          success = True
       except Exception as e:
-         tracer.error("could not write state file %s (%s)" % (FILENAME_STATEFILE, e))
+         appTracer.error("could not write state file %s (%s)" % (FILENAME_STATEFILE, e))
 
       return success
 
@@ -172,16 +172,16 @@ class _Context(object):
    def fetchHanaPasswordFromKeyVault(self,
                                      passwordKeyVault: str,
                                      passwordKeyVaultMsiClientId: str) -> str:
-      global tracer
-      tracer.info("fetching HANA credentials from KeyVault")
+      global appTracer
+      appTracer.info("fetching HANA credentials from KeyVault")
 
       # Extract KeyVault name from secret URL
       vaultNameSearch = re.search("https://(.*).vault.azure.net", passwordKeyVault)
-      tracer.debug("vaultNameSearch=%s" % vaultNameSearch)
+      appTracer.debug("vaultNameSearch=%s" % vaultNameSearch)
 
       # Create temporary KeyVault object to get relevant secret
-      kv = AzureKeyVault(tracer, vaultNameSearch.group(1), passwordKeyVaultMsiClientId)
-      tracer.debug("kv=%s" % kv)
+      kv = AzureKeyVault(appTracer, vaultNameSearch.group(1), passwordKeyVaultMsiClientId)
+      appTracer.debug("kv=%s" % kv)
 
       return kv.getSecret(passwordKeyVault)
 
@@ -192,8 +192,8 @@ class _Context(object):
       def sliceDict(d: dict, s: str) -> dict:
          return {k: v for k, v in iter(d.items()) if k.startswith(s)}
 
-      global tracer
-      tracer.info("parsing secrets")
+      global appTracer
+      appTracer.info("parsing secrets")
 
       # Extract HANA instance(s) from current KeyVault secrets
       secrets = self.azKv.getCurrentSecrets()
@@ -203,31 +203,31 @@ class _Context(object):
       for h in hanaSecrets.keys():
          hanaDetails = json.loads(hanaSecrets[h])
          if not hanaDetails["HanaDbPassword"]:
-            tracer.info("no HANA password provided; need to fetch password from separate KeyVault")
+            appTracer.info("no HANA password provided; need to fetch password from separate KeyVault")
             try:
                password = self.fetchHanaPasswordFromKeyVault(hanaDetails["HanaDbPasswordKeyVaultUrl"],
                                                              hanaDetails["PasswordKeyVaultMsiClientId"])
                hanaDetails["HanaDbPassword"] = password
-               tracer.debug("retrieved HANA password successfully from KeyVault")
+               appTracer.debug("retrieved HANA password successfully from KeyVault")
             except Exception as e:
-               tracer.critical("could not fetch HANA password (instance=%s) from KeyVault (%s)" % (h, e))
+               appTracer.critical("could not fetch HANA password (instance=%s) from KeyVault (%s)" % (h, e))
                sys.exit(ERROR_GETTING_HANA_CREDENTIALS)
          try:
-            hanaInstance = SapHana(tracer, hanaDetails = hanaDetails)
+            hanaInstance = SapHana(appTracer, hanaDetails = hanaDetails)
          except Exception as e:
-            tracer.error("could not create HANA instance %s) (%s)" % (h, e))
+            appTracer.error("could not create HANA instance %s) (%s)" % (h, e))
             continue
          self.hanaInstances.append(hanaInstance)
-         self.enableCustomerMetrics = hanaDetails["EnableCustomerMetrics"]
+         self.enableCustomerAnalytics = hanaDetails["EnableCustomerAnalytics"]
 
       # Also extract Log Analytics credentials from secrets
       try:
          laSecret = json.loads(secrets["AzureLogAnalytics"])
       except Exception as e:
-         tracer.critical("could not fetch Log Analytics credentials (%s)" % e)
+         appTracer.critical("could not fetch Log Analytics credentials (%s)" % e)
          sys.exit(ERROR_GETTING_LOG_CREDENTIALS)
       self.azLa = AzureLogAnalytics(
-         tracer,
+         appTracer,
          laSecret["LogAnalyticsWorkspaceId"],
          laSecret["LogAnalyticsSharedKey"]
          )
@@ -241,11 +241,11 @@ def onboard(args: str) -> None:
    Store credentials in the customer KeyVault
    (To be executed as custom script upon initial deployment of collector VM)
    """
-   tracer.info("starting onboarding payload")
+   appTracer.info("starting onboarding payload")
 
    # Store provided credentials as a KeyVault secret
    hanaSecretName = "SapHana-%s" % args.HanaDbName
-   tracer.debug("hanaSecretName=%s" % hanaSecretName)
+   appTracer.debug("hanaSecretName=%s" % hanaSecretName)
    hanaSecretValue = json.dumps({
       "HanaHostname":                args.HanaHostname,
       "HanaDbName":                  args.HanaDbName,
@@ -254,55 +254,55 @@ def onboard(args: str) -> None:
       "HanaDbPasswordKeyVaultUrl":   args.HanaDbPasswordKeyVaultUrl,
       "HanaDbSqlPort":               args.HanaDbSqlPort,
       "PasswordKeyVaultMsiClientId": args.PasswordKeyVaultMsiClientId,
-      "EnableCustomerMetrics":       args.EnableCustomerMetrics,
+      "EnableCustomerAnalytics":       args.EnableCustomerAnalytics,
       })
-   tracer.info("storing HANA credentials as KeyVault secret")
+   appTracer.info("storing HANA credentials as KeyVault secret")
    try:
       ctx.azKv.setSecret(hanaSecretName, hanaSecretValue)
    except Exception as e:
-      tracer.critical("could not store HANA credentials in KeyVault secret (%s)" % e)
+      appTracer.critical("could not store HANA credentials in KeyVault secret (%s)" % e)
       sys.exit(ERROR_SETTING_KEYVAULT_SECRET)
 
    # Store credentials for new Log Analytics Workspace (created by HanaRP)
    laSecretName = "AzureLogAnalytics"
-   tracer.debug("laSecretName=%s" % laSecretName)
+   appTracer.debug("laSecretName=%s" % laSecretName)
    laSecretValue = json.dumps({
       "LogAnalyticsWorkspaceId": args.LogAnalyticsWorkspaceId,
       "LogAnalyticsSharedKey":   args.LogAnalyticsSharedKey,
       })
-   tracer.info("storing Log Analytics credentials as KeyVault secret")
+   appTracer.info("storing Log Analytics credentials as KeyVault secret")
    try:
       ctx.azKv.setSecret(laSecretName,
                          laSecretValue)
    except Exception as e:
-      tracer.critical("could not store Log Analytics credentials in KeyVault secret (%s)" % e)
+      appTracer.critical("could not store Log Analytics credentials in KeyVault secret (%s)" % e)
       sys.exit(ERROR_SETTING_KEYVAULT_SECRET)
 
    # Check connectivity to HANA instance
    # TODO - this validation check should be part of the (HANA) provider
    hanaDetails = json.loads(hanaSecretValue)
    if not hanaDetails["HanaDbPassword"]:
-      tracer.info("no HANA password provided; need to fetch password from separate KeyVault")
+      appTracer.info("no HANA password provided; need to fetch password from separate KeyVault")
       hanaDetails["HanaDbPassword"] = ctx.fetchHanaPasswordFromKeyVault(
          hanaDetails["HanaDbPasswordKeyVaultUrl"],
          hanaDetails["PasswordKeyVaultMsiClientId"])
-   tracer.info("connecting to HANA instance to run test query")
+   appTracer.info("connecting to HANA instance to run test query")
    try:
-      hana = SapHana(tracer, hanaDetails = hanaDetails)
+      hana = SapHana(appTracer, hanaDetails = hanaDetails)
       hana.connect()
       hana.runQuery("SELECT 0 FROM DUMMY")
       # TODO - check for permissions on monitoring tables
       hana.disconnect()
    except Exception as e:
-      tracer.critical("could not connect to HANA instance and run test query (%s)" % e)
+      appTracer.critical("could not connect to HANA instance and run test query (%s)" % e)
       sys.exit(ERROR_HANA_CONNECTION)
 
-   tracer.info("onboarding payload successfully completed")
+   appTracer.info("onboarding payload successfully completed")
    return
 
 # Execute the actual monitoring payload
 def monitor(args: str) -> None:
-   tracer.info("starting monitor payload")
+   appTracer.info("starting monitor payload")
    ctx.parseSecrets()
    # TODO - proper handling of content and connection types
 
@@ -311,34 +311,34 @@ def monitor(args: str) -> None:
       try:
          h.connect()
       except Exception as e:
-         tracer.critical("could not connect to HANA instance (%s)" % e)
+         appTracer.critical("could not connect to HANA instance (%s)" % e)
          sys.exit(ERROR_HANA_CONNECTION)
 
       # Actual payload:
       # Execute all checks that are due and ingest their results
       for c in ctx.availableChecks:
          if not c.state["isEnabled"]:
-            tracer.info("check %s_%s has been disabled, skipping" % (c.prefix, c.name))
+            appTracer.info("check %s_%s has been disabled, skipping" % (c.prefix, c.name))
             continue
 
          # lastRunLocal = last execution time on collector VM
          # lastRunServer (used in provider) = last execution time on (HANA) server
          lastRunLocal = c.state["lastRunLocal"]
-         tracer.debug("lastRunLocal=%s; frequencySecs=%d; currentLocal=%s" % \
+         appTracer.debug("lastRunLocal=%s; frequencySecs=%d; currentLocal=%s" % \
             (lastRunLocal, c.frequencySecs, datetime.utcnow()))
          if lastRunLocal and \
             lastRunLocal + timedelta(seconds=c.frequencySecs) > datetime.utcnow():
-            tracer.info("check %s_%s is not due yet, skipping" % (c.prefix, c.name))
+            appTracer.info("check %s_%s is not due yet, skipping" % (c.prefix, c.name))
             continue
-         tracer.info("running check %s_%s" % (c.prefix, c.name))
+         appTracer.info("running check %s_%s" % (c.prefix, c.name))
          resultJson = c.run(h)
          ctx.azLa.ingest(c.customLog, resultJson, c.colTimeGenerated)
-         if ctx.enableCustomerMetrics:
+         if ctx.enableCustomerAnalytics:
             metrics = {
                "Type": c.customLog,
                "Data": resultJson,
             }
-            metricsTracer.info(metrics)
+            analyticsTracer.info(metrics)
 
       # After all checks have been executed, persist their state
       ctx.writeStateFile()
@@ -348,9 +348,9 @@ def monitor(args: str) -> None:
       try:
          h.disconnect()
       except Exception as e:
-         tracer.error("could not disconnect from HANA instance (%s)" % e)
+         appTracer.error("could not disconnect from HANA instance (%s)" % e)
 
-   tracer.info("monitor payload successfully completed")
+   appTracer.info("monitor payload successfully completed")
    return
 
 # Ensures the required directory structure exists
@@ -366,7 +366,7 @@ def ensureDirectoryStructure() -> None:
 
 # Main function with argument parser
 def main() -> None:
-   global ctx, tracer
+   global ctx, appTracer
 
    # Make sure we have all directories in place
    ensureDirectoryStructure()
@@ -426,20 +426,20 @@ def main() -> None:
                           required = False,
                           type = str,
                           help = "MSI Client ID used to get the access token from IMDS")
-   onbParser.add_argument("--EnableCustomerMetrics",
+   onbParser.add_argument("--EnableCustomerAnalytics",
                           required = False,
                           type = bool,
                           default = False,
                           help = "Setting to enable sending metrics to Microsoft")
    args = parser.parse_args()
-   tracer = tracing.initTracer(args)
+   appTracer = tracing.initTracer(args)
    ctx = _Context(args.command)
    args.func(args)
 
    return
 
-tracer = None
-metricsTracer = None
+appTracer = None
+analyticsTracer = None
 ctx = None
 if __name__ == "__main__":
    main()
