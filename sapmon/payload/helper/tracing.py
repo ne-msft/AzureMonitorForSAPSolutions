@@ -34,7 +34,7 @@ class JsonFormatter(logging.Formatter):
       if self.usesTime():
          record.asctime = self.formatTime(record, self.datefmt)
 
-   # Combines any supplied fields with the log record msg field into an object to convert to JSON 
+   # Combines any supplied fields with the log record msg field into an object to convert to JSON
    def _getJsonData(self,
                     record: logging.LogRecord) -> OrderedDict():
       if len(self.fieldMapping.keys()) > 0:
@@ -121,8 +121,9 @@ class tracing:
 
    # Add a storage queue log handler to an existing tracer
    @staticmethod
-   def addQueueLogHandler(tracer: logging.Logger,
-                          ctx) -> None:
+   def addQueueLogHandler(
+           tracer: logging.Logger,
+           ctx) -> None:
 
       # Provide access to custom (payload-specific) fields
       oldFactory = logging.getLogRecordFactory()
@@ -131,14 +132,14 @@ class tracing:
          record.sapmonid = ctx.sapmonId
          record.payloadversion = PAYLOAD_VERSION
          return record
-
       tracer.info("adding storage queue log handler")
       try:
          storageQueue = AzureStorageQueue(tracer,
                                           sapmonId = ctx.sapmonId,
                                           msiClientID = ctx.vmTags.get("SapMonMsiClientId", None),
                                           subscriptionId = ctx.vmInstance["subscriptionId"],
-                                          resourceGroup = ctx.vmInstance["resourceGroupName"])
+                                          resourceGroup = ctx.vmInstance["resourceGroupName"],
+                                          queueName = STORAGE_QUEUE_NAMING_CONVENTION % ctx.sapmonId)
          storageKey = storageQueue.getAccessKey()
          queueStorageLogHandler = QueueStorageHandler(account_name=storageQueue.accountName,
                                                       account_key = storageKey,
@@ -153,5 +154,33 @@ class tracing:
          tracer.error("could not add handler for the storage queue logging (%s) " % e)
          return
 
+      queueStorageLogHandler.level = DEFAULT_QUEUE_TRACE_LEVEL
       tracer.addHandler(queueStorageLogHandler)
       return
+
+   # Initialize customer metrics tracer object
+   @staticmethod
+   def initCustomerAnalyticsTracer(
+           tracer: logging.Logger,
+           ctx) -> logging.Logger:
+       tracer.info("creating customer metrics tracer object")
+       try:
+           storageQueue = AzureStorageQueue(tracer,
+                                            sapmonId = ctx.sapmonId,
+                                            msiClientID = ctx.vmTags.get("SapMonMsiClientId", None),
+                                            subscriptionId = ctx.vmInstance["subscriptionId"],
+                                            resourceGroup = ctx.vmInstance["resourceGroupName"],
+                                            queueName = CUSTOMER_METRICS_QUEUE_NAMING_CONVENTION % ctx.sapmonId)
+           storageKey = storageQueue.getAccessKey()
+           customerMetricsLogHandler = QueueStorageHandler(account_name=storageQueue.accountName,
+                                                           account_key = storageKey,
+                                                           protocol = "https",
+                                                           queue = storageQueue.name)
+       except Exception as e:
+           tracer.error("could not add handler for the storage queue logging (%s) " % e)
+           return
+
+       logger = logging.getLogger("customerMetricsLogger")
+       logger.addHandler(customerMetricsLogHandler)
+       return logger
+
