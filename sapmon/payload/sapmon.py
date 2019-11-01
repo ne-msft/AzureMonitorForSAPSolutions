@@ -60,7 +60,7 @@ class _Context(object):
       tracing.addQueueLogHandler(appTracer, self)
 
       # Initializing appTracer for emitting metrics
-      analyticsTracer = tracing.initCustomerMetricsTracer(appTracer, self)
+      analyticsTracer = tracing.initCustomerAnalyticsTracer(appTracer, self)
 
       # Get KeyVault
       self.azKv = AzureKeyVault(appTracer, KEYVAULT_NAMING_CONVENTION % self.sapmonId, self.vmTags.get("SapMonMsiClientId", None))

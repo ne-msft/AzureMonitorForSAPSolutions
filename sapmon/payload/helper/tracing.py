@@ -160,7 +160,7 @@ class tracing:
 
    # Initialize customer metrics tracer object
    @staticmethod
-   def initCustomerMetricsTracer(
+   def initCustomerAnalyticsTracer(
            tracer: logging.Logger,
            ctx) -> logging.Logger:
        tracer.info("creating customer metrics tracer object")
