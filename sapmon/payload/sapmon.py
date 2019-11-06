@@ -218,7 +218,7 @@ class _Context(object):
             appTracer.error("could not create HANA instance %s) (%s)" % (h, e))
             continue
          self.hanaInstances.append(hanaInstance)
-         self.enableCustomerAnalytics = hanaDetails["EnableCustomerAnalytics"]
+         self.enableCustomerAnalytics = hanaDetails.get("EnableCustomerAnalytics", False)
 
       # Also extract Log Analytics credentials from secrets
       try:
