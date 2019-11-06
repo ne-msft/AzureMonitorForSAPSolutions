@@ -186,3 +186,4 @@ class SapHanaCheck(SapmonCheck):
       self.state["lastResultHash"] = self.calculateResultHash()
       self.tracer.info("internal state successfully updated")
       return True
+
