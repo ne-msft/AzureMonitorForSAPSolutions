@@ -32,8 +32,8 @@ ExecuteCommand "apt-get -y update"
 ExecuteCommand "apt-get install -y python3-pip"
 # Upgrade pip
 ExecuteCommand "python3 -m pip install -U pip"
-# Install pyhdb
-ExecuteCommand "pip3 install pyhdb"
+# Install hdbcli
+ExecuteCommand "pip3 install hdbcli"
 # Install azure_storage_logging
 ExecuteCommand "pip3 install azure_storage_logging"
 # Install azure-mgmt-storage

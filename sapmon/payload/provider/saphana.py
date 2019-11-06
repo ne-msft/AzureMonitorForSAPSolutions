@@ -10,7 +10,7 @@ from provider.base import *
 from typing import Dict, List
 
 # SAP HANA modules
-import pyhdb
+from hdbcli import dbapi
 
 ###############################################################################
 
@@ -44,12 +44,11 @@ class SapHana:
 
    # Connect to a HDB instance
    def connect(self) -> None:
-      self.connection = pyhdb.Connection(host = self.host,
-                                         port = self.port,
-                                         user = self.user,
-                                         password = self.password,
-                                         timeout = self.TIMEOUT_HANA_SECS)
-      self.connection.connect()
+      self.connection = dbapi.connect(address = self.host,
+                                      port = self.port,
+                                      user = self.user,
+                                      password = self.password,
+                                      timeout = self.TIMEOUT_HANA_SECS)
       self.cursor = self.connection.cursor()
 
    # Close an open HDB connection
