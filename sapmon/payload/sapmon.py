@@ -334,11 +334,14 @@ def monitor(args: str) -> None:
          resultJson = c.run(h)
          ctx.azLa.ingest(c.customLog, resultJson, c.colTimeGenerated)
          if ctx.enableCustomerAnalytics:
-            metrics = {
-               "Type": c.customLog,
-               "Data": resultJson,
-            }
-            analyticsTracer.info(metrics)
+            appTracer.info("customer analytics enabled, sending analytics")
+            results = json.loads(resultJson)
+            for result in results:
+               metrics = {
+                  "Type": c.customLog,
+                  "Data": result,
+               }
+               analyticsTracer.info(metrics)
 
       # After all checks have been executed, persist their state
       ctx.writeStateFile()
