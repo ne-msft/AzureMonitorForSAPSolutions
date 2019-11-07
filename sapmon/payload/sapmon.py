@@ -431,9 +431,10 @@ def main() -> None:
                           help = "MSI Client ID used to get the access token from IMDS")
    onbParser.add_argument("--EnableCustomerAnalytics",
                           required = False,
-                          type = bool,
-                          default = False,
-                          help = "Setting to enable sending metrics to Microsoft")
+                          help = "Setting to enable sending metrics to Microsoft",
+                          action="store_true",
+                          dest="EnableCustomerAnalytics")
+   onbParser.set_defaults(EnableCustomerAnalytics=False)
    args = parser.parse_args()
    appTracer = tracing.initTracer(args)
    ctx = _Context(args.command)
