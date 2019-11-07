@@ -28,6 +28,15 @@
                         "prometheusOptions": {
                                 "includePrefixes": "^ha_cluster_"
                         }
+                },
+                {
+                        "name": "HanaDbExporter",
+                        "description": "Export Data from the HANA DB specific prometheus exporter",
+                        "customLog": "Prometheus_HANAExporter",
+                        "frequencySecs": 15,
+                        "prometheusOptions": {
+                                "includePrefixes": "^hanadb_"
+                        }
                 }
         ]
 }
