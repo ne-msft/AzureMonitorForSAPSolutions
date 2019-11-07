@@ -229,20 +229,14 @@ class _Context(object):
                   appTracer.critical("could not fetch HANA password (instance=%s) from KeyVault (%s)" % (h, e))
                   sys.exit(ERROR_GETTING_HANA_CREDENTIALS)
             try:
-               password = self.fetchHanaPasswordFromKeyVault(hanaDetails["HanaDbPasswordKeyVaultUrl"],
-                                                             hanaDetails["PasswordKeyVaultMsiClientId"])
-               hanaDetails["HanaDbPassword"] = password
-               appTracer.debug("retrieved HANA password successfully from KeyVault")
+               connection = eval(instanceDetails["ConnectionType"])(appTracer, instanceDetails)
             except Exception as e:
-               appTracer.critical("could not fetch HANA password (instance=%s) from KeyVault (%s)" % (h, e))
-               sys.exit(ERROR_GETTING_HANA_CREDENTIALS)
-         try:
-            hanaInstance = SapHana(appTracer, hanaDetails = hanaDetails)
-         except Exception as e:
-            appTracer.error("could not create HANA instance %s) (%s)" % (h, e))
-            continue
-         self.hanaInstances.append(hanaInstance)
-         self.enableCustomerAnalytics = hanaDetails.get("EnableCustomerAnalytics", False)
+               appTracer.error("could not create HANA instance %s) (%s)" % (h, e))
+               continue
+            self.monitoringConnections.append(connection)
+            self.enableCustomerAnalytics = instanceDetails.get("EnableCustomerAnalytics", False)
+         else:
+            tracer.error("Unknown config version %s" % instanceDetails["ConfigVersion"])
 
       # Also extract Log Analytics credentials from secrets
       try:
