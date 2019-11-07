@@ -38,3 +38,5 @@ ExecuteCommand "pip3 install hdbcli"
 ExecuteCommand "pip3 install azure_storage_logging"
 # Install azure-mgmt-storage
 ExecuteCommand "pip3 install azure-mgmt-storage"
+# Install prometheus_client library
+ExecuteCommand "pip3 install azure-mgmt-storage"
