@@ -33,7 +33,7 @@ sapmonContentTypes = {
 # Internal context handler
 class _Context(object):
    azKv = None
-   availableChecks = []
+   contentProviders = []
    hanaInstances = []
    sapmonId = None
    vmInstance = None
@@ -67,9 +67,9 @@ class _Context(object):
       if not self.azKv.exists():
          sys.exit(ERROR_KEYVAULT_NOT_FOUND)
 
-      # Initialize monitoring content and state file
+      # Initialize monitoring content
       self.initMonitoringContent()
-      self.readStateFile()
+      appTracer.info("successfully initialized context")
  
    # Initialize all monitoring content (pre-delivered via content/*.json)
    def initMonitoringContent(self) -> None:
@@ -82,91 +82,12 @@ class _Context(object):
             continue
          contentFullPath = "%s/%s" % (PATH_CONTENT, filename)
          appTracer.debug("contentFullPath=%s" % contentFullPath)
-         try:
-            with open(contentFullPath, "r") as file:
-               data = file.read()
-            jsonData = json.loads(data)
-         except Exception as e:
-            appTracer.error("could not load content file %s (%s)" % (contentFullPath, e))
-         contentType = jsonData.get("contentType", None)
+         contentProvider = SapmonContentProvider(appTracer, contentFullPath)
+         if contentProvider:
+            self.contentProviders.append(contentProvider)
 
-         # Check for required fields
-         if not contentType:
-            appTracer.error("content type not specified in content file %s, skipping" % contentFullPath)
-            continue
-         contentVersion = jsonData.get("contentVersion", None)
-         if not contentVersion:
-            appTracer.error("content version not specified in content file %s, skipping" % contentFullPath)
-            continue
-         checks = jsonData.get("checks", [])
-         if not contentType in sapmonContentTypes:
-            appTracer.error("unknown content type %s, skipping content file %s" % (contentType, contentFullPath))
-            continue
-
-         # Iterate through all checks in the file
-         for checkOptions in checks:
-            try:
-               appTracer.info("instantiate check of type %s" % contentType)
-               checkOptions["version"] = contentVersion
-               appTracer.debug("checkOptions=%s" % checkOptions)
-               check = eval(sapmonContentTypes[contentType])(appTracer, **checkOptions)
-               self.availableChecks.append(check)
-            except Exception as e:
-               appTracer.error("could not instantiate new check of type %s (%s)" % (contentType, e))
-
-      appTracer.info("successfully loaded %d monitoring checks" % len(self.availableChecks))
+      appTracer.info("successfully loaded %d content providers" % len(self.contentProviders))
       return
-
-   # Get most recent state from state/sapmon.state
-   def readStateFile(self) -> bool:
-      global appTracer
-      appTracer.info("reading state file")
-      success = True
-      jsonData = {}
-      try:
-         appTracer.debug("FILENAME_STATEFILE=%s" % FILENAME_STATEFILE)
-         with open(FILENAME_STATEFILE, "r") as file:
-            data = file.read()
-         jsonData = json.loads(data, object_hook=JsonDecoder.datetimeHook)
-      except FileNotFoundError as e:
-         appTracer.warning("state file %s does not exist" % FILENAME_STATEFILE)
-      except Exception as e:
-         appTracer.error("could not read state file %s (%s)" % (FILENAME_STATEFILE, e))
-
-      # Iterate through all checks to parse their state
-      for c in self.availableChecks:
-         sectionKey = "%s_%s" % (c.prefix, c.name)
-         if sectionKey in jsonData:
-            appTracer.debug("parsing section %s" % sectionKey)
-            section = jsonData.get(sectionKey, {})
-            for k in section.keys():
-               c.state[k] = section[k]
-         else:
-            appTracer.warning("section %s not found in state file" % sectionKey)
-
-      appTracer.info("successfully parsed state file")
-      return success
-
-   # Persist current state of all checks into state/sapmon.state
-   def writeStateFile(self) -> bool:
-      global appTracer
-      appTracer.info("writing state file")
-      success  = False
-      jsonData = {}
-      try:
-         appTracer.debug("FILENAME_STATEFILE=%s" % FILENAME_STATEFILE)
-
-         # Iterate through all checks and write their state
-         for c in self.availableChecks:
-            sectionKey = "%s_%s" % (c.prefix, c.name)
-            jsonData[sectionKey] = c.state
-         with open(FILENAME_STATEFILE, "w") as file:
-            json.dump(jsonData, file, indent=3, cls=JsonEncoder)
-         success = True
-      except Exception as e:
-         appTracer.error("could not write state file %s (%s)" % (FILENAME_STATEFILE, e))
-
-      return success
 
    # Fetch HANA password from a separate KeyVault
    def fetchHanaPasswordFromKeyVault(self,

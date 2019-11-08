@@ -72,16 +72,17 @@ class SapHanaCheck(SapmonCheck):
    COL_SAPMON_VERSION = "SAPMON_VERSION"
 
    prefix = "HANA"
+   sql = None
    isTimeSeries = False
    colIndex = {}
    lastResult = []
 
    def __init__(self,
-                tracer: logging.Logger,
+                provider: SapmonContentProvider,
                 hanaOptions: Dict[str, str],
                 **kwargs):
-      super().__init__(tracer, **kwargs)
-      self.query = hanaOptions["query"]
+      super().__init__(provider, **kwargs)
+      self.sql = hanaOptions.get("sql", "")
       self.isTimeSeries = hanaOptions.get("isTimeSeries", False)
       self.colTimeGenerated = self.COL_TIMESERIES_UTC if self.isTimeSeries else self.COL_SERVER_UTC
       self.initialTimespanSecs = hanaOptions.get("initialTimespanSecs", 0)
@@ -122,68 +123,80 @@ class SapHanaCheck(SapmonCheck):
 
       return sql
 
-   # Run this SAP HANA-specific check
-   def run(self,
-           hana: SapHana) -> str:
-      self.tracer.info("running HANA SQL query")
-      sql = self.prepareSql()
+   # # Run this SAP HANA-specific check
+   # def run(self,
+   #         hana: SapHana) -> str:
+   #    self.tracer.info("running HANA SQL query")
+   #    sql = self.prepareSql()
 
-      # Only run this and update state if the prepared SQL is non-empty
-      if sql:
-         self.colIndex, self.lastResult = hana.runQuery(sql)
-         self.updateState(hana)
+   #    # Only run this and update state if the prepared SQL is non-empty
+   #    if sql:
+   #       self.colIndex, self.lastResult = hana.runQuery(sql)
+   #       self.updateState(hana)
 
-      # But still always convert into a JSON string
-      resultJson = self.convertResultIntoJson()
-      return resultJson
+   #    # But still always convert into a JSON string
+   #    resultJson = self.convertResultIntoJson()
+   #    return resultJson
 
-   # Calculate the MD5 hash of a result set
-   def calculateResultHash(self) -> str:
-      self.tracer.info("calculating SQL result hash")
-      resultHash = None
-      if len(self.lastResult) == 0:
-         self.tracer.debug("SQL result is empty")
-      else:
-         try:
-            resultHash = hashlib.md5(str(self.lastResult).encode("utf-8")).hexdigest()
-            self.tracer.debug("resultHash=%s" % resultHash)
-         except Exception as e:
-            self.tracer.error("could not calculate result hash (%s)" % e)
-      return resultHash
+   # # Calculate the MD5 hash of a result set
+   # def calculateResultHash(self) -> str:
+   #    self.tracer.info("calculating SQL result hash")
+   #    resultHash = None
+   #    if len(self.lastResult) == 0:
+   #       self.tracer.debug("SQL result is empty")
+   #    else:
+   #       try:
+   #          resultHash = hashlib.md5(str(self.lastResult).encode("utf-8")).hexdigest()
+   #          self.tracer.debug("resultHash=%s" % resultHash)
+   #       except Exception as e:
+   #          self.tracer.error("could not calculate result hash (%s)" % e)
+   #    return resultHash
 
-   # Convert last result into a JSON string (as required by Log Analytics Data Collector API)
-   def convertResultIntoJson(self):
-      self.tracer.info("converting result set into JSON")
-      logData = []
-      # In case we cannot convert, the JSON string would just be "{}"
-      jsonData = "{}"
+   # # Convert last result into a JSON string (as required by Log Analytics Data Collector API)
+   # def convertResultIntoJson(self):
+   #    self.tracer.info("converting result set into JSON")
+   #    logData = []
+   #    # In case we cannot convert, the JSON string would just be "{}"
+   #    jsonData = "{}"
 
-      # Iterate through all rows of the last result
-      for r in self.lastResult:
-         logItem = {}
-         for c in self.colIndex.keys():
-            if c != self.colTimeGenerated and (c.startswith("_") or c == "DUMMY"): # remove internal fields
-               continue
-            logItem[c] = r[self.colIndex[c]]
-         logData.append(logItem)
-      try:
-         resultJson = json.dumps(logData, sort_keys=True, indent=4, cls=JsonEncoder)
-         self.tracer.debug("resultJson=%s" % str(resultJson))
-      except Exception as e:
-         self.tracer.error("could not encode logItem=%s into JSON (%s)" % (logItem, e))
+   #    # Iterate through all rows of the last result
+   #    for r in self.lastResult:
+   #       logItem = {}
+   #       for c in self.colIndex.keys():
+   #          if c != self.colTimeGenerated and (c.startswith("_") or c == "DUMMY"): # remove internal fields
+   #             continue
+   #          logItem[c] = r[self.colIndex[c]]
+   #       logData.append(logItem)
+   #    try:
+   #       resultJson = json.dumps(logData, sort_keys=True, indent=4, cls=JsonEncoder)
+   #       self.tracer.debug("resultJson=%s" % str(resultJson))
+   #    except Exception as e:
+   #       self.tracer.error("could not encode logItem=%s into JSON (%s)" % (logItem, e))
 
-      return resultJson
+   #    return resultJson
 
-   # Update the internal state of this check (including last run times)
-   def updateState(self,
-                   hana: SapHana) -> bool:
-      self.tracer.info("updating internal state of check %s_%s" % (self.prefix, self.name))
-      self.state["lastRunLocal"] = datetime.utcnow()
-      if len(self.lastResult) == 0:
-         self.tracer.info("SQL result is empty")
-         return False
-      self.state["lastRunServer"] = self.lastResult[0][self.colIndex[self.COL_SERVER_UTC]]
-      self.state["lastResultHash"] = self.calculateResultHash()
-      self.tracer.info("internal state successfully updated")
-      return True
+   # # Update the internal state of this check (including last run times)
+   # def updateState(self,
+   #                 hana: SapHana) -> bool:
+   #    self.tracer.info("updating internal state of check %s_%s" % (self.prefix, self.name))
+   #    self.state["lastRunLocal"] = datetime.utcnow()
+   #    if len(self.lastResult) == 0:
+   #       self.tracer.info("SQL result is empty")
+   #       return False
+   #    self.state["lastRunServer"] = self.lastResult[0][self.colIndex[self.COL_SERVER_UTC]]
+   #    self.state["lastResultHash"] = self.calculateResultHash()
+   #    self.tracer.info("internal state successfully updated")
+   #    return True
 
+   def executeSql(self):
+      # hana.connect
+      # prepareSql
+      # hana.runQuery
+      # update state
+      return
+
+   def parseHostConfig(self):
+      return
+
+   def probeSqlConnection(self):
+      return
