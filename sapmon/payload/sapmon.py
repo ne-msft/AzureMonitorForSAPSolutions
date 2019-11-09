@@ -291,7 +291,7 @@ def onboard(args: str) -> None:
       hana = SapHana(appTracer, hanaDetails = hanaDetails)
       hana.connect()
       # Below query will fail if HANA license is expired
-      hana.runQuery("SELECT * FROM M_DATABASES")
+      hana.runQuery("SELECT * FROM M_SERVICES")
       # TODO - check for permissions on monitoring tables
       hana.disconnect()
    except Exception as e:
