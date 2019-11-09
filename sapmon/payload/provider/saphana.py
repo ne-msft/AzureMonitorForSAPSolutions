@@ -58,7 +58,11 @@ class SapHana:
    # Execute a SQL query
    def runQuery(self,
                 sql: str) -> (Dict[str, str], List[str]):
-      self.cursor.execute(sql)
+      try:
+         self.cursor.execute(sql)
+      except Exception as e:
+         self.tracer.error("could not execute HANA query (%s)" % e)
+         return {}, []
       colIndex = {col[0] : idx for idx, col in enumerate(self.cursor.description)}
       return colIndex, self.cursor.fetchall()
 
