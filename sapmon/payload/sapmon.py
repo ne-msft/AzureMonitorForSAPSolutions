@@ -80,9 +80,12 @@ class _Context(object):
       for filename in os.listdir(PATH_CONTENT):
          if not filename.endswith(".json"):
             continue
+         providerName = "%sProvider" % re.search("(.*).json", filename)
          contentFullPath = "%s/%s" % (PATH_CONTENT, filename)
-         appTracer.debug("contentFullPath=%s" % contentFullPath)
-         contentProvider = SapmonContentProvider(appTracer, contentFullPath)
+         appTracer.debug("providerName=%s, contentFullPath=%s" % (providerName, contentFullPath))
+
+         providerClass = getattr(self, providerName)
+         contentProvider = providerClass(appTracer, contentFullPath)
          if contentProvider:
             self.contentProviders.append(contentProvider)
 
@@ -121,25 +124,20 @@ class _Context(object):
       hanaSecrets = sliceDict(secrets, "SapHana-")
 
       # Create HANA instances for all configurations stored as secrets
-      for h in hanaSecrets.keys():
-         hanaDetails = json.loads(hanaSecrets[h])
-         if not hanaDetails["HanaDbPassword"]:
-            appTracer.info("no HANA password provided; need to fetch password from separate KeyVault")
-            try:
-               password = self.fetchHanaPasswordFromKeyVault(hanaDetails["HanaDbPasswordKeyVaultUrl"],
-                                                             hanaDetails["PasswordKeyVaultMsiClientId"])
-               hanaDetails["HanaDbPassword"] = password
-               appTracer.debug("retrieved HANA password successfully from KeyVault")
-            except Exception as e:
-               appTracer.critical("could not fetch HANA password (instance=%s) from KeyVault (%s)" % (h, e))
-               sys.exit(ERROR_GETTING_HANA_CREDENTIALS)
+      h = hanaSecrets.keys[0]
+      hanaDetails = json.loads(hanaSecrets[h])
+      if not hanaDetails["HanaDbPassword"]:
+         appTracer.info("no HANA password provided; need to fetch password from separate KeyVault")
          try:
-            hanaInstance = SapHana(appTracer, hanaDetails = hanaDetails)
+            password = self.fetchHanaPasswordFromKeyVault(hanaDetails["HanaDbPasswordKeyVaultUrl"],
+                                                          hanaDetails["PasswordKeyVaultMsiClientId"])
+            hanaDetails["HanaDbPassword"] = password
+            appTracer.debug("retrieved HANA password successfully from KeyVault")
          except Exception as e:
-            appTracer.error("could not create HANA instance %s) (%s)" % (h, e))
-            continue
-         self.hanaInstances.append(hanaInstance)
-         self.enableCustomerAnalytics = hanaDetails.get("EnableCustomerAnalytics", False)
+            appTracer.critical("could not fetch HANA password (instance=%s) from KeyVault (%s)" % (h, e))
+            sys.exit(ERROR_GETTING_HANA_CREDENTIALS)
+      self.enableCustomerAnalytics = hanaDetails.get("EnableCustomerAnalytics", False)
+      hanaConfig = SapHanaConfig(hanaDetails = hanaDetails)
 
       # Also extract Log Analytics credentials from secrets
       try:
@@ -152,6 +150,20 @@ class _Context(object):
          laSecret["LogAnalyticsWorkspaceId"],
          laSecret["LogAnalyticsSharedKey"]
          )
+
+      return
+
+   def ingestCustomerAnalytics(self,
+                               resultJson: str) -> None:
+      appTracer.info("sending customer analytics")
+      results = json.loads(resultJson, object_hook=JsonDecoder.datetimeHook)
+      for result in results:
+         metrics = {
+            "Type": c.customLog,
+            "Data": result,
+         }
+         appTracer.debug("metrics=%s" % metrics)
+         analyticsTracer.info(metrics)
 
       return
 
@@ -206,16 +218,12 @@ def onboard(args: str) -> None:
       appTracer.info("no HANA password provided; need to fetch password from separate KeyVault")
       hanaDetails["HanaDbPassword"] = ctx.fetchHanaPasswordFromKeyVault(
          hanaDetails["HanaDbPasswordKeyVaultUrl"],
-         hanaDetails["PasswordKeyVaultMsiClientId"])
-   appTracer.info("connecting to HANA instance to run test query")
-   try:
-      hana = SapHana(appTracer, hanaDetails = hanaDetails)
-      hana.connect()
-      hana.runQuery("SELECT 0 FROM DUMMY")
-      # TODO - check for permissions on monitoring tables
-      hana.disconnect()
-   except Exception as e:
-      appTracer.critical("could not connect to HANA instance and run test query (%s)" % e)
+         hanaDetails["PasswordKeyVaultMsiClientId"]
+         )
+   SapHanaConfig.update(hanaDetails)
+
+   if SapHanaProvider.validate() == False:
+      appTracer.critical("validation of HANA instance failed, aborting")
       sys.exit(ERROR_HANA_CONNECTION)
 
    appTracer.info("onboarding payload successfully completed")
@@ -225,54 +233,27 @@ def onboard(args: str) -> None:
 def monitor(args: str) -> None:
    appTracer.info("starting monitor payload")
    ctx.parseSecrets()
-   # TODO - proper handling of content and connection types
 
-   # Iterate through all configured HANA instances
-   for h in ctx.hanaInstances:
-      try:
-         h.connect()
-      except Exception as e:
-         appTracer.critical("could not connect to HANA instance (%s)" % e)
-         sys.exit(ERROR_HANA_CONNECTION)
-
-      # Actual payload:
-      # Execute all checks that are due and ingest their results
-      for c in ctx.availableChecks:
-         if not c.state["isEnabled"]:
-            appTracer.info("check %s_%s has been disabled, skipping" % (c.prefix, c.name))
+   for provider in self.contentProviders:
+      for check in provider.checks:
+         # Skip this check if it's not due yet
+         if not check.isDue():
             continue
 
-         # lastRunLocal = last execution time on collector VM
-         # lastRunServer (used in provider) = last execution time on (HANA) server
-         lastRunLocal = c.state["lastRunLocal"]
-         appTracer.debug("lastRunLocal=%s; frequencySecs=%d; currentLocal=%s" % \
-            (lastRunLocal, c.frequencySecs, datetime.utcnow()))
-         if lastRunLocal and \
-            lastRunLocal + timedelta(seconds=c.frequencySecs) > datetime.utcnow():
-            appTracer.info("check %s_%s is not due yet, skipping" % (c.prefix, c.name))
-            continue
-         appTracer.info("running check %s_%s" % (c.prefix, c.name))
-         resultJson = c.run(h)
-         ctx.azLa.ingest(c.customLog, resultJson, c.colTimeGenerated)
+         # Run all actions that are part of this check
+         resultJson = check.run()
+
+         # Ingest result into Log Analytics
+         ctx.azLa.ingest(check.customLog,
+                         resultJson,
+                         check.colTimeGenerated)
+
+         # Persist updated internal state to provider state file
+         provider.writeState()
+
+         # Ingest result into Customer Analytics
          if ctx.enableCustomerAnalytics:
-            appTracer.info("customer analytics enabled, sending analytics")
-            results = json.loads(resultJson)
-            for result in results:
-               metrics = {
-                  "Type": c.customLog,
-                  "Data": result,
-               }
-               analyticsTracer.info(metrics)
-
-      # After all checks have been executed, persist their state
-      ctx.writeStateFile()
-
-      # Try to disconnect from HANA
-      # TODO - there should be a specific after payload hook in each provider
-      try:
-         h.disconnect()
-      except Exception as e:
-         appTracer.error("could not disconnect from HANA instance (%s)" % e)
+            ctx.ingestCustomerAnalytics(resultJson)
 
    appTracer.info("monitor payload successfully completed")
    return

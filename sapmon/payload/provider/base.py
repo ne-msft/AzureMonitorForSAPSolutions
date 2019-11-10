@@ -12,6 +12,8 @@ class SapmonContentProvider:
    name = None
    version = None
    checks = []
+   state = {}
+
    def __init__(self,
                 tracer: logging.Logger,
                 filename: str):
@@ -134,6 +136,7 @@ class SapmonCheck(ABC):
                 actions: List[str],
                 enabled: bool = True):
       self.provider = provider
+      self.tracer = provider.tracer
       self.name = name
       self.description = description
       self.customLog = customLog
@@ -144,15 +147,41 @@ class SapmonCheck(ABC):
          "lastRunLocal": None
       }
 
+   # Determine if this check is due to be executed
+   def isDue(self) -> bool:
+      # lastRunLocal = last execution time on collector VM
+      # lastRunServer (used in provider) = last execution time on (HANA) server
+      self.tracer.info("verifying that check %s is due to be run" % self.name)
+      lastRunLocal = self.state["lastRunLocal"]
+      self.tracer.debug("lastRunLocal=%s; frequencySecs=%d; currentLocal=%s" % \
+         (lastRunLocal, self.frequencySecs, datetime.utcnow()))
+      if lastRunLocal and \
+         lastRunLocal + timedelta(seconds=c.frequencySecs) > datetime.utcnow():
+         self.tracer.info("check %s is not due yet, skipping" % self.name)
+         return False
+      return True
+
    # Method that gets called when this check is executed
-   def run(self):
-      self.provider.tracer.info("executing check %s" % self.name)
-      self.provider.tracer.debug("actions=%s" % self.actions)
-      for a in self.actions:
-         action = getattr(self, a)
-         action()
+   # Returns a JSON-formatted string that can be ingested into Log Analytics
+   def run(self) -> str:
+      self.tracer.info("executing all actions of check %s" % self.name)
+      self.tracer.debug("actions=%s" % self.actions)
+      for action in self.actions:
+         methodName = action["type"]
+         parameters = action.get("parameters", {})
+         self.tracer.debug("calling action %s" % methodName)
+         method = getattr(self, methodName)
+         if method(**parameters) == False:
+            self.tracer.info("error executing check %s action %s, skipping remaining actions" % (self.name, action))
+      return self._generateJsonString()
 
    # Method that gets called when the internal state is updated
    @abstractmethod
-   def updateState(self):
+   def _updateState(self):
+      pass
+
+   # Method to generate a JSON-encoded string containing the result
+   # (This string will be ingested into Log Analytics and Customer Analytics)
+   @abstractmethod
+   def _generateJsonString(self) -> str:
       pass
