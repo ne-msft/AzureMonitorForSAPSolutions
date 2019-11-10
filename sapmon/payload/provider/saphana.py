@@ -15,7 +15,25 @@ from hdbcli import dbapi
 ###############################################################################
 
 # Stores configuration specific to a SAP HANA database instance
-def SapHanaProvider(SapmonContentProvider):
+class SapHanaConfig(metaclass=Singleton):
+   host = None
+   port = None
+   user = None
+   password = None
+   timeout = TIMEOUT_HANA_MS
+
+   @classmethod
+   def update(cls, hanaDetails):
+      cls.host = hanaDetails.get("HanaHostname", None)
+      cls.port = hanaDetails.get("HanaDbSqlPort", None)
+      cls.user = hanaDetails.get("HanaDbUsername", None)
+      cls.password = hanaDetails.get("HanaDbPassword", None)
+#         {"PasswordKeyVaultMsiClientId": null, "HanaHostname": "10.7.1.4", "HanaDbUsername": "SYSTEM", "HanaDbPassword": "Manager1", "HanaDbName": "SYSTEMDB", "HanaDbSqlPort": 30015, "HanaDbPasswordKeyVaultUrl": null}
+
+###############################################################################
+
+# Stores configuration specific to a SAP HANA database instance
+class SapHanaProvider(SapmonContentProvider):
    def __init__(self,
                 tracer,
                 contentFullPath,
@@ -23,8 +41,8 @@ def SapHanaProvider(SapmonContentProvider):
       super().__init__(tracer, contentFullPath, **kwargs)
 
    @staticmethod
-   def validate(self) -> bool:
-      appTracer.info("connecting to HANA instance to run test query")
+   def validate(tracer) -> bool:
+      tracer.info("connecting to HANA instance to run test query")
       hanaConfig = SapHanaConfig()
 
       try:
@@ -35,19 +53,19 @@ def SapHanaProvider(SapmonContentProvider):
                                     CONNECTTIMEOUT = hanaConfig.timeout)
          cursor = connection.cursor()
          if not connection.isconnected():
-            appTracer.error("unable to validate connection status")
+            tracer.error("unable to validate connection status")
             return False
-      except:
-         self.tracer.error("could not connect to HANA node %s:%d (%s)" % (h,
-                                                                          self.hanaConfig.port,
-                                                                          e))
+      except Exception as e:
+         tracer.error("could not connect to HANA node %s:%d (%s)" % (hanaConfig.host,
+                                                                     hanaConfig.port,
+                                                                     e))
          return False
 
       try:
          cursor.execute("SELECT * FROM M_SERVICES")
          connection.close()
       except Exception as e:
-         appTracer.critical("could run test query (%s)" % e)
+         tracer.critical("could run test query (%s)" % e)
          return False
 
       return True
@@ -324,19 +342,3 @@ class SapHanaCheck(SapmonCheck):
       self.tracer.debug("probeResults=%s" % probeResults)
       return True
 
-###############################################################################
-
-# Stores configuration specific to a SAP HANA database instance
-def SapHanaConfig(metaclass=Singleton):
-   host = None
-   port = None
-   user = None
-   password = None
-   timeout = TIMEOUT_HANA_MS
-
-   def update(hanaDetails):
-      self.host = hanaDetails.get("HanaHostname", None)
-      self.port = hanaDetails.get("HanaSqlPort": None)
-      self.user = hanaDetails.get("HanaDbUsername": None)
-      self.password = hanaDetails.get("HanaDbPassword": None)
-#         {"PasswordKeyVaultMsiClientId": null, "HanaHostname": "10.7.1.4", "HanaDbUsername": "SYSTEM", "HanaDbPassword": "Manager1", "HanaDbName": "SYSTEMDB", "HanaDbSqlPort": 30015, "HanaDbPasswordKeyVaultUrl": null}

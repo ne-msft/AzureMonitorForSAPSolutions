@@ -80,12 +80,13 @@ class _Context(object):
       for filename in os.listdir(PATH_CONTENT):
          if not filename.endswith(".json"):
             continue
-         providerName = "%sProvider" % re.search("(.*).json", filename)
+         providerName = "%sProvider" % re.search("(.*).json", filename).group(1)
          contentFullPath = "%s/%s" % (PATH_CONTENT, filename)
          appTracer.debug("providerName=%s, contentFullPath=%s" % (providerName, contentFullPath))
 
-         providerClass = getattr(self, providerName)
-         contentProvider = providerClass(appTracer, contentFullPath)
+         #providerClass = getattr(self, providerName)
+         #contentProvider = providerClass(appTracer, contentFullPath)
+         contentProvider = eval(providerName)(appTracer, contentFullPath)
          if contentProvider:
             self.contentProviders.append(contentProvider)
 
@@ -101,7 +102,7 @@ class _Context(object):
 
       # Extract KeyVault name from secret URL
       vaultNameSearch = re.search("https://(.*).vault.azure.net", passwordKeyVault)
-      appTracer.debug("vaultNameSearch=%s" % vaultNameSearch)
+      appTracer.debug("vaultNameSearch=%s" % vaultNameSearch.group(1))
 
       # Create temporary KeyVault object to get relevant secret
       kv = AzureKeyVault(appTracer, vaultNameSearch.group(1), passwordKeyVaultMsiClientId)
@@ -222,7 +223,7 @@ def onboard(args: str) -> None:
          )
    SapHanaConfig.update(hanaDetails)
 
-   if SapHanaProvider.validate() == False:
+   if SapHanaProvider.validate(appTracer) == False:
       appTracer.critical("validation of HANA instance failed, aborting")
       sys.exit(ERROR_HANA_CONNECTION)
 

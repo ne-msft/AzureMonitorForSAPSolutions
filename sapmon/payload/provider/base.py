@@ -1,12 +1,14 @@
 # Python modules
 from abc import ABC, abstractmethod
 import logging
+from typing import Callable, Dict, List, Optional
 
 # Payload modules
 from const import *
 
 ###############################################################################
 
+# Base class for all SAP Monitor content providers
 class SapmonContentProvider:
    tracer = None
    name = None
@@ -23,7 +25,7 @@ class SapmonContentProvider:
       self.readState()
 
    # Read content from provider definition
-   def initContent(filename: str) -> bool:
+   def initContent(self, filename: str) -> bool:
       try:
          with open(filename, "r") as file:
             data = file.read()
@@ -116,6 +118,7 @@ class SapmonContentProvider:
       self.tracer.info("successfully wrote state file for content provider %s" % self.name)
       return True
 
+###############################################################################
 
 # Base class for all SAP Monitor checks
 class SapmonCheck(ABC):
