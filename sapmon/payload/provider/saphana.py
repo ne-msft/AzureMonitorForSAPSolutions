@@ -29,7 +29,6 @@ class SapHanaConfig(metaclass=Singleton):
       cls.port = hanaDetails.get("HanaDbSqlPort", None)
       cls.user = hanaDetails.get("HanaDbUsername", None)
       cls.password = hanaDetails.get("HanaDbPassword", None)
-#         {"PasswordKeyVaultMsiClientId": null, "HanaHostname": "10.7.1.4", "HanaDbUsername": "SYSTEM", "HanaDbPassword": "Manager1", "HanaDbName": "SYSTEMDB", "HanaDbSqlPort": 30015, "HanaDbPasswordKeyVaultUrl": null}
 
 ###############################################################################
 
@@ -45,6 +44,7 @@ class SapHanaProvider(SapmonContentProvider):
       super().__init__(tracer, contentFullPath, **kwargs)
 
    # Read content from provider definition
+   # TODO(tniek): Refactor this into the generic provider class
    def initContent(self, filename: str) -> bool:
       try:
          with open(filename, "r") as file:
@@ -54,6 +54,7 @@ class SapHanaProvider(SapmonContentProvider):
          self.tracer.error("could not load content file %s (%s)" % (filename, e))
          return False
 
+      # Validate required fields
       self.name = jsonData.get("providerName", None)
       if not self.name:
          self.tracer.error("provider name not specified in content file %s" % filename)
@@ -67,6 +68,7 @@ class SapHanaProvider(SapmonContentProvider):
          self.tracer.error("check type not specified in content file %s" % filename)
          return False
 
+      # Parse and instantiate the individual checks of the provider
       checks = jsonData.get("checks", [])
       for checkOptions in checks:
          try:
@@ -79,11 +81,13 @@ class SapHanaProvider(SapmonContentProvider):
             self.tracer.error("could not instantiate new check of type %s (%s)" % (self.checkType, e))
       return True
 
+   # Static method called by the onboarding payload to validate the HANA connection
    @staticmethod
    def validate(tracer) -> bool:
       tracer.info("connecting to HANA instance to run test query")
       hanaConfig = SapHanaConfig()
 
+      # Try to establish a HANA connection using the details provided by the user
       try:
          connection = dbapi.connect(address = hanaConfig.host,
                                     port = hanaConfig.port,
@@ -100,6 +104,8 @@ class SapHanaProvider(SapmonContentProvider):
                                                                      e))
          return False
 
+      # Try to run a query against the services view
+      # This query will (rightfully) fail if the HANA license is expired
       try:
          cursor.execute("SELECT * FROM M_SERVICES")
          connection.close()
@@ -125,6 +131,7 @@ class SapHanaCheck(SapmonCheck):
    # Obtain one working HANA connection (client-side failover logic)
    def _getHanaConnection(self):
       self.tracer.info("establishing connection with HANA instance")
+
       # Check if HANA host config has been retrieved from DB yet
       if "hostConfig" not in self.provider.state:
          # Host config has not been retrieved yet; our only candidate is the one provided by user
@@ -136,6 +143,7 @@ class SapHanaCheck(SapmonCheck):
          hostConfig = self.provider.state["hostConfig"]
          hostsToTry = [h["host"] for h in hostConfig]
 
+      # Iterate through the prioritized list of hosts to try
       cursor = None
       self.tracer.debug("hostsToTry=%s" % hostsToTry)
       for host in hostsToTry:
@@ -145,6 +153,7 @@ class SapHanaCheck(SapmonCheck):
                                        user = self.hanaConfig.user,
                                        password = self.hanaConfig.password,
                                        CONNECTTIMEOUT = self.hanaConfig.timeout)
+            # Validate that we're indeed connected
             if connection.isconnected():
                cursor = connection.cursor()
                break
@@ -172,6 +181,7 @@ class SapHanaCheck(SapmonCheck):
       # If time series, insert time condition
       if isTimeSeries:
          lastRunServer = self.state.get("lastRunServer", None)
+
          # TODO(tniek) - make WHERE conditions for time series queries more flexible
          if not lastRunServer:
             self.tracer.info("time series query for HANA check %s has never been run, applying initalTimespanSecs=%d" % \
@@ -209,7 +219,7 @@ class SapHanaCheck(SapmonCheck):
 
    # Generate a JSON-encoded string with the last query result
    def _generateJsonString(self) -> str:
-      # TODO(tniek): Consider SapmonCheck._generateJsonString() for all check types 
+      # TODO(tniek): Consider SapmonCheck._generateJsonString() for all check types
       self.tracer.info("converting SQL query result set into JSON")
       logData = []
       
@@ -260,7 +270,7 @@ class SapHanaCheck(SapmonCheck):
       self.tracer.info("internal state successfully updated")
       return True
 
-   # Connect to HANA and run the defined SQL statement
+   # Connect to HANA and run the check-specific SQL statement
    def executeSql(self,
                   sql: str,
                   isTimeSeries: bool = False,
@@ -279,7 +289,6 @@ class SapHanaCheck(SapmonCheck):
       preparedSql = self._prepareSql(sql,
                                      isTimeSeries,
                                      initialTimespanSecs)
-      #sys.exit()
       if not preparedSql:
          return False
 
@@ -292,10 +301,6 @@ class SapHanaCheck(SapmonCheck):
          self.tracer.error("could not execute SQL %s (%s)" % (query, e))
          return False
 
-      # Cancel if result is empty
-      #if len(resultRows) == 0:
-      #   self.tracer.error("SQL query returned empty results, cancelling check execution")
-      #   return False
       self.lastResult = (colIndex, resultRows)
       self.tracer.debug("lastResult.colIndex=%s" % colIndex)
       self.tracer.debug("lastResult.resultRows=%s " % resultRows)
@@ -304,7 +309,7 @@ class SapHanaCheck(SapmonCheck):
       if not self._updateState():
          return False
 
-      # Disconnect from HANA server
+      # Disconnect from HANA server to avoid memory leaks
       try:
          connection.close()
       except Exception as e:
@@ -316,16 +321,9 @@ class SapHanaCheck(SapmonCheck):
 
    # Parse result of the query against M_LANDSCAPE_HOST_CONFIGURATION and store it internally
    def parseHostConfig(self):
-      # description
-      # (('HOST', 9, 64, 64, 64, 0, True), ('HOST_ACTIVE', 9, 128, 128, 128, 0, True), ('HOST_STATUS', 9, 128, 128, 128, 0, True), ('FAILOVER_STATUS', 9, 128, 128, 128, 0, True), ('FAILOVER_GROUP', 9, 256, 256, 256, 0, True), ('FAILOVER_CONFIG_GROUP', 9, 256, 256, 256, 0, True), ('FAILOVER_ACTUAL_GROUP', 9, 256, 256, 256, 0, True), ('NAMESERVER_CONFIG_ROLE', 9, 16, 16, 16, 0, True), ('NAMESERVER_ACTUAL_ROLE', 9, 16, 16, 16, 0, True), ('INDEXSERVER_CONFIG_ROLE', 9, 16, 16, 16, 0, True), ('INDEXSERVER_ACTUAL_ROLE', 9, 16, 16, 16, 0, True), ('HOST_CONFIG_ROLES', 9, 64, 64, 64, 0, True), ('HOST_ACTUAL_ROLES', 9, 64, 64, 64, 0, True), ('STORAGE_PARTITION', 3, 10, 10, 10, 0, True), ('STORAGE_CONFIG_PARTITION', 3, 10, 10, 10, 0, True), ('STORAGE_ACTUAL_PARTITION', 3, 10, 10, 10, 0, True), ('WORKER_CONFIG_GROUPS', 9, 256, 256, 256, 0, True), ('WORKER_ACTUAL_GROUPS', 9, 256, 256, 256, 0, True), ('REMOVE_STATUS', 9, 16, 16, 16, 0, True))
-
-      # hdb01, 02, 03 up
-      # [('hdb01', 'YES', 'OK', '', 'default', 'default', 'default', 'MASTER 1', 'MASTER', 'WORKER', 'MASTER', 'WORKER', 'WORKER', 1, 1, 1, 'default', 'default', ''), ('hdb02', 'YES', 'OK', '', 'default', 'default', 'default', 'MASTER 2', 'SLAVE', 'WORKER', 'SLAVE', 'WORKER', 'WORKER', 2, 2, 2, 'default', 'default', ''), ('hdb03', 'YES', 'IGNORE', '', 'default', 'default', 'default', 'MASTER 3', 'SLAVE', 'STANDBY', 'STANDBY', 'STANDBY', 'STANDBY', 0, 0, 0, 'default', '-', '')]
-
-      # stop hdb01
-      # [('hdb01', 'NO', 'INFO', '', 'default', 'default', 'default', 'MASTER 1', 'SLAVE', 'WORKER', 'STANDBY', 'WORKER', 'STANDBY', 0, 1, 0, 'default', '-', ''), ('hdb02', 'YES', 'OK', '', 'default', 'default', 'default', 'MASTER 2', 'SLAVE', 'WORKER', 'SLAVE', 'WORKER', 'WORKER', 2, 2, 2, 'default', 'default', ''), ('hdb03', 'YES', 'INFO', '', 'default', 'default', 'default', 'MASTER 3', 'MASTER', 'STANDBY', 'MASTER', 'STANDBY', 'WORKER', 1, 0, 1, 'default', 'default', '')]
-
       self.tracer.info("parsing HANA host configuration and storing it in provider state")
+
+      # Iterate through the results and store a mini version in the global provider state
       hosts = []
       (colIndex, resultRows) = self.lastResult
       for r in resultRows:
@@ -351,6 +349,7 @@ class SapHanaCheck(SapmonCheck):
          self.tracer.error("HANA host configuration check has not been executed and/or persisted in provider state yet")
          return False
 
+      # Iterate through all hosts (alphabetical order) from the host config
       hostConfig = self.provider.state["hostConfig"]
       hostsToProbe = [h["host"] for h in hostConfig]
       probeResults = []
@@ -404,4 +403,3 @@ class SapHanaCheck(SapmonCheck):
       if not self._updateState():
          return False
       return True
-

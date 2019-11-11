@@ -211,14 +211,11 @@ def onboard(args: str) -> None:
       sys.exit(ERROR_SETTING_KEYVAULT_SECRET)
 
    # Check connectivity to HANA instance
-   # TODO - this validation check should be part of the (HANA) provider
    hanaDetails = json.loads(hanaSecretValue)
    if not hanaDetails["HanaDbPassword"]:
       appTracer.info("no HANA password provided; need to fetch password from separate KeyVault")
-      hanaDetails["HanaDbPassword"] = ctx.fetchHanaPasswordFromKeyVault(
-         hanaDetails["HanaDbPasswordKeyVaultUrl"],
-         hanaDetails["PasswordKeyVaultMsiClientId"]
-         )
+      hanaDetails["HanaDbPassword"] = ctx.fetchHanaPasswordFromKeyVault(hanaDetails["HanaDbPasswordKeyVaultUrl"],
+                                                                        hanaDetails["PasswordKeyVaultMsiClientId"])
    SapHanaConfig.update(hanaDetails)
 
    if SapHanaProvider.validate(appTracer) == False:
@@ -236,6 +233,7 @@ def monitor(args: str) -> None:
    for provider in ctx.contentProviders:
       for check in provider.checks:
          appTracer.info("starting check %s.%s" % (provider.name, check.name))
+
          # Skip this check if it's not enabled or not due yet
          if (check.isEnabled() == False) or (check.isDue() == False):
             continue

@@ -29,7 +29,7 @@ class SapmonContentProvider:
       self.tracer.info("reading state file for content provider %s" % self.name)
       jsonData = {}
 
-      # Parse JSON for all check states for this provider
+      # Parse JSON for all check states of this provider
       try:
          filename = os.path.join(PATH_STATE, "%s.state" % self.name)
          self.tracer.debug("filename=%s" % filename)
