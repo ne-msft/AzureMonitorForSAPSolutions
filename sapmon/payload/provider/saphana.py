@@ -2,6 +2,7 @@
 import hashlib
 import json
 import logging
+import time
 
 # Payload modules
 from const import *
@@ -38,7 +39,45 @@ class SapHanaProvider(SapmonContentProvider):
                 tracer,
                 contentFullPath,
                 **kwargs):
+      self.tracer = tracer
+      if not self.initContent(contentFullPath):
+         return None
       super().__init__(tracer, contentFullPath, **kwargs)
+
+   # Read content from provider definition
+   def initContent(self, filename: str) -> bool:
+      try:
+         with open(filename, "r") as file:
+            data = file.read()
+         jsonData = json.loads(data)
+      except Exception as e:
+         self.tracer.error("could not load content file %s (%s)" % (filename, e))
+         return False
+
+      self.name = jsonData.get("providerName", None)
+      if not self.name:
+         self.tracer.error("provider name not specified in content file %s" % filename)
+         return False
+      self.version = jsonData.get("contentVersion", None)
+      if not self.version:
+         self.tracer.error("content version not specified in content file %s" % filename)
+         return False
+      self.checkType = jsonData.get("checkType", None)
+      if not self.checkType:
+         self.tracer.error("check type not specified in content file %s" % filename)
+         return False
+
+      checks = jsonData.get("checks", [])
+      for checkOptions in checks:
+         try:
+            self.tracer.info("instantiate check of type %s" % self.checkType)
+            self.tracer.debug("checkOptions=%s" % checkOptions)
+            checkOptions["provider"] = self
+            check = eval(self.checkType)(**checkOptions)
+            self.checks.append(check)
+         except Exception as e:
+            self.tracer.error("could not instantiate new check of type %s (%s)" % (self.checkType, e))
+      return True
 
    @staticmethod
    def validate(tracer) -> bool:
@@ -74,7 +113,7 @@ class SapHanaProvider(SapmonContentProvider):
 
 # Implements a SAP HANA-specific monitoring check
 class SapHanaCheck(SapmonCheck):
-   lastQueryResult = None
+   lastResult = None
    colTimeGenerated = None
    hanaConfig = SapHanaConfig()
    
@@ -82,7 +121,6 @@ class SapHanaCheck(SapmonCheck):
                 provider: SapmonContentProvider,
                 **kwargs):
       super().__init__(provider, **kwargs)
-      self.state["lastRunServer"] = None
 
    # Obtain one working HANA connection (client-side failover logic)
    def _getHanaConnection(self):
@@ -91,7 +129,7 @@ class SapHanaCheck(SapmonCheck):
       if "hostConfig" not in self.provider.state:
          # Host config has not been retrieved yet; our only candidate is the one provided by user
          self.tracer.debug("no host config has been persisted to provider yet, using user-provided host")
-         hostsToTry = [host]
+         hostsToTry = [self.hanaConfig.host]
       else:
          # Host config has already been retrieved; rank the hosts to compile a list of hosts to try
          self.tracer.debug("host config has been persisted to provider, deriving prioritized host list")
@@ -100,9 +138,9 @@ class SapHanaCheck(SapmonCheck):
 
       cursor = None
       self.tracer.debug("hostsToTry=%s" % hostsToTry)
-      for h in hostsToTry:
+      for host in hostsToTry:
          try:
-            connection = dbapi.connect(address = h,
+            connection = dbapi.connect(address = host,
                                        port = self.hanaConfig.port,
                                        user = self.hanaConfig.user,
                                        password = self.hanaConfig.password,
@@ -110,8 +148,8 @@ class SapHanaCheck(SapmonCheck):
             if connection.isconnected():
                cursor = connection.cursor()
                break
-         except:
-            self.tracer.warning("could not connect to HANA node %s:%d (%s)" % (h,
+         except Exception as e:
+            self.tracer.warning("could not connect to HANA node %s:%d (%s)" % (host,
                                                                                self.hanaConfig.port,
                                                                                e))
       if not cursor:
@@ -137,7 +175,7 @@ class SapHanaCheck(SapmonCheck):
          # TODO(tniek) - make WHERE conditions for time series queries more flexible
          if not lastRunServer:
             self.tracer.info("time series query for HANA check %s has never been run, applying initalTimespanSecs=%d" % \
-               (self.name, self.initialTimespanSecs))
+               (self.name, initialTimespanSecs))
             lastRunServerUtc = "ADD_SECONDS(NOW(), i.VALUE*(-1) - %d)" % initialTimespanSecs
          else:
             if not isinstance(lastRunServer, datetime):
@@ -145,12 +183,12 @@ class SapHanaCheck(SapmonCheck):
                return None
             try:
                lastRunServerUtc = "'%s'" % lastRunServer.strftime(TIME_FORMAT_HANA)
-            except:
-               self.tracer.error("could not format lastRunServer=%s into HANA format" % str(lastRunServer))
+            except Exception as e:
+               self.tracer.error("could not format lastRunServer=%s into HANA format (%s)" % (str(lastRunServer), e))
                return None
-            self.tracer.info("time series query for check %s has been run at %s, filter out only new records since then" % \
-               (self.name, lastRunServerUtc))
-         self.tracer.debug("lastRunServerUtc = %s" % lastRunServerUtc)
+            self.tracer.info("time series query for check %s.%s has been run at %s, filter out only new records since then" % \
+               (self.provider.name, self.name, lastRunServerUtc))
+         self.tracer.debug("lastRunServerUtc=%s" % lastRunServerUtc)
          preparedSql = sql.replace("{lastRunServerUtc}", lastRunServerUtc, 1)
          self.tracer.debug("preparedSql=%s" % preparedSql)
 
@@ -176,19 +214,19 @@ class SapHanaCheck(SapmonCheck):
       logData = []
       
       # Only loop through the result if there is one
-      if self.lastQueryResult:
-         (colIndex, resultRows) = self.lastQueryResult
+      if self.lastResult:
+         (colIndex, resultRows) = self.lastResult
          # Iterate through all rows of the last query result
          for r in resultRows:
             logItem = {
-               "CONTENT_VERSION": self.version,
+               "CONTENT_VERSION": self.provider.version,
                "SAPMON_VERSION": PAYLOAD_VERSION
             }
             for c in colIndex.keys():
                # Unless it's the column mapped to TimeGenerated, remove internal fields
                if c != self.colTimeGenerated and (c.startswith("_") or c == "DUMMY"):
                   continue
-               logItem[c] = r[self.colIndex[c]]
+               logItem[c] = r[colIndex[c]]
             logData.append(logItem)
 
       # Convert temporary dictionary into JSON string
@@ -201,11 +239,23 @@ class SapHanaCheck(SapmonCheck):
 
    # Update the internal state of this check (including last run times)
    def _updateState(self) -> bool:
-      self.tracer.info("updating internal state of check %s" % (self.name))
-      (colIndex, resultRows) = self.lastQueryResult
-      self.state["lastRunLocal"] = datetime.utcnow()
-      if COL_SERVER_UTC in colIndex:
-         self.state["lastRunServer"] = resultRows[0][colIndex[COL_SERVER_UTC]]
+      self.tracer.info("updating internal state of check %s.%s" % (self.provider.name, self.name))
+      (colIndex, resultRows) = self.lastResult
+
+      # Always store lastRunLocal; if the check result doesn't have it, use current time
+      if COL_LOCAL_UTC in colIndex:
+         lastRunLocal = resultRows[0][colIndex[COL_LOCAL_UTC]]
+      else:
+         lastRunLocal = datetime.utcnow()
+      self.state["lastRunLocal"] = lastRunLocal
+
+      # Only store lastRunServer if we have it in the check result; consider time-series queries
+      if len(resultRows) > 0:
+         if COL_TIMESERIES_UTC in colIndex:
+            self.state["lastRunServer"] = resultRows[-1][colIndex[COL_TIMESERIES_UTC]]
+         elif COL_SERVER_UTC in colIndex:
+            self.state["lastRunServer"] = resultRows[0][colIndex[COL_SERVER_UTC]]
+
       self.state["lastResultHash"] = self._calculateResultHash(resultRows)
       self.tracer.info("internal state successfully updated")
       return True
@@ -229,6 +279,7 @@ class SapHanaCheck(SapmonCheck):
       preparedSql = self._prepareSql(sql,
                                      isTimeSeries,
                                      initialTimespanSecs)
+      #sys.exit()
       if not preparedSql:
          return False
 
@@ -242,10 +293,12 @@ class SapHanaCheck(SapmonCheck):
          return False
 
       # Cancel if result is empty
-      if len(resultRows) == 0:
-         self.tracer.error("SQL query returned empty results, cancelling check execution")
-         return False
+      #if len(resultRows) == 0:
+      #   self.tracer.error("SQL query returned empty results, cancelling check execution")
+      #   return False
       self.lastResult = (colIndex, resultRows)
+      self.tracer.debug("lastResult.colIndex=%s" % colIndex)
+      self.tracer.debug("lastResult.resultRows=%s " % resultRows)
 
       # Update internal state
       if not self._updateState():
@@ -274,7 +327,7 @@ class SapHanaCheck(SapmonCheck):
 
       self.tracer.info("parsing HANA host configuration and storing it in provider state")
       hosts = []
-      (colIndex, resultRows) = self.lastQueryResult
+      (colIndex, resultRows) = self.lastResult
       for r in resultRows:
          host = {
             "host": r["HOST"],
@@ -307,16 +360,22 @@ class SapHanaCheck(SapmonCheck):
 
          # Probe SQL connection to a particular HANA node
          startTime = time.time()
-         connection = dbapi.connect(address = host,
-                                    port = self.hanaConfig.port,
-                                    user = self.hanaConfig.user,
-                                    password = self.hanaConfig.password,
-                                    CONNECTTIMEOUT = self.hanaConfig.timeout)
+         try:
+            connection = dbapi.connect(address = host,
+                                       port = self.hanaConfig.port,
+                                       user = self.hanaConfig.user,
+                                       password = self.hanaConfig.password,
+                                       CONNECTTIMEOUT = self.hanaConfig.timeout)
 
-         # If connection is successful, measure latency
-         if connection.isconnected():
-            latency = time.time() - startTime
-            success = True
+            # If connection is successful, measure latency
+            if connection.isconnected():
+               latency = (time.time() - startTime) * 1000
+               success = True
+         except Exception as e:
+            self.tracer.error("could not connect to HANA instance %s:%d (%s)" % (host,
+                                                                                 self.hanaConfig.port,
+                                                                                 e))
+         finally:
             connection.close()
 
          # Build probing result tuple with current local time
@@ -329,16 +388,20 @@ class SapHanaCheck(SapmonCheck):
                ]
             )
 
+      # Store complete probing result internally and update state
+      self.tracer.debug("probeResults=%s" % probeResults)
       self.lastResult = (
             {
                COL_LOCAL_UTC: 0,
                "HOST": 1,
                "SUCCESS": 2,
-               "LATENCY": 3,
+               "LATENCY_MS": 3,
             },
             probeResults
          )
 
-      self.tracer.debug("probeResults=%s" % probeResults)
+      # Update internal state
+      if not self._updateState():
+         return False
       return True
 

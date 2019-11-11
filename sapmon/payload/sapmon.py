@@ -10,7 +10,6 @@
 # Python modules
 from abc import ABC, abstractmethod
 import argparse
-from datetime import date, datetime, timedelta
 import json
 import os
 import re
@@ -21,6 +20,7 @@ from const import *
 from helper.azure import *
 from helper.tools import *
 from helper.tracing import *
+
 from provider.saphana import *
 
 ###############################################################################
@@ -120,13 +120,11 @@ class _Context(object):
       global appTracer
       appTracer.info("parsing secrets")
 
-      # Extract HANA instance(s) from current KeyVault secrets
+      # Until we have multiple provider instances, just pick the first HANA config
       secrets = self.azKv.getCurrentSecrets()
       hanaSecrets = sliceDict(secrets, "SapHana-")
-
-      # Create HANA instances for all configurations stored as secrets
-      h = hanaSecrets.keys[0]
-      hanaDetails = json.loads(hanaSecrets[h])
+      hanaJson = list(hanaSecrets.values())[0]
+      hanaDetails = json.loads(hanaJson)
       if not hanaDetails["HanaDbPassword"]:
          appTracer.info("no HANA password provided; need to fetch password from separate KeyVault")
          try:
@@ -138,7 +136,7 @@ class _Context(object):
             appTracer.critical("could not fetch HANA password (instance=%s) from KeyVault (%s)" % (h, e))
             sys.exit(ERROR_GETTING_HANA_CREDENTIALS)
       self.enableCustomerAnalytics = hanaDetails.get("EnableCustomerAnalytics", False)
-      hanaConfig = SapHanaConfig(hanaDetails = hanaDetails)
+      SapHanaConfig.update(hanaDetails)
 
       # Also extract Log Analytics credentials from secrets
       try:
@@ -235,10 +233,11 @@ def monitor(args: str) -> None:
    appTracer.info("starting monitor payload")
    ctx.parseSecrets()
 
-   for provider in self.contentProviders:
+   for provider in ctx.contentProviders:
       for check in provider.checks:
-         # Skip this check if it's not due yet
-         if not check.isDue():
+         appTracer.info("starting check %s.%s" % (provider.name, check.name))
+         # Skip this check if it's not enabled or not due yet
+         if (check.isEnabled() == False) or (check.isDue() == False):
             continue
 
          # Run all actions that are part of this check

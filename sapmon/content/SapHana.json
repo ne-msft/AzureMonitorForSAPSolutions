@@ -53,9 +53,9 @@
             ]
         },
         {  
-            "name": "SystemAvailability",
-            "description": "SAP HANA System Availability",
-            "customLog": "SapHana_SystemAvailability",
+            "name": "SqlProbe",
+            "description": "Probe for SAP HANA SQL connection",
+            "customLog": "SapHana_SqlProbe",
             "frequencySecs": 60,
             "actions": [  
                 {  
