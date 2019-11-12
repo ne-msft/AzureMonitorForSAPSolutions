@@ -342,7 +342,8 @@ def monitor(args: str) -> None:
                   "Type": c.customLog,
                   "Data": result,
                }
-               analyticsTracer.info(metrics)
+               j = json.dumps(metrics)
+               analyticsTracer.info(j)
 
       # After all checks have been executed, persist their state
       ctx.writeStateFile()
