@@ -84,8 +84,6 @@ class _Context(object):
          contentFullPath = "%s/%s" % (PATH_CONTENT, filename)
          appTracer.debug("providerName=%s, contentFullPath=%s" % (providerName, contentFullPath))
 
-         #providerClass = getattr(self, providerName)
-         #contentProvider = providerClass(appTracer, contentFullPath)
          contentProvider = eval(providerName)(appTracer, contentFullPath)
          if contentProvider:
             self.contentProviders.append(contentProvider)

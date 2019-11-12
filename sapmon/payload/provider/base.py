@@ -1,8 +1,8 @@
 # Python modules
 from abc import ABC, abstractmethod
 from datetime import date, datetime, timedelta
-import logging
 import json
+import logging
 from typing import Callable, Dict, List, Optional
 
 # Payload modules
