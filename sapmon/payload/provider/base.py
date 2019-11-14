@@ -122,7 +122,7 @@ class SapmonCheck(ABC):
 
    # Return if this check is enabled or not
    def isEnabled(self) -> bool:
-      self.tracer.info("verifying that check %s.%s is enabled" % (self.provider.name, self.name))
+      self.tracer.info("verifying if check %s.%s is enabled" % (self.provider.name, self.name))
       if not self.state["isEnabled"]:
          self.tracer.info("check %s.%s is currently not enabled, skipping" % (self.provider.name, self.name))
          return False
@@ -132,7 +132,7 @@ class SapmonCheck(ABC):
    def isDue(self) -> bool:
       # lastRunLocal = last execution time on collector VM
       # lastRunServer (used in provider) = last execution time on (HANA) server
-      self.tracer.info("verifying that check %s.%s is due to be run" % (self.provider.name, self.name))
+      self.tracer.info("verifying if check %s.%s is due to be run" % (self.provider.name, self.name))
       lastRunLocal = self.state["lastRunLocal"]
       self.tracer.debug("lastRunLocal=%s; frequencySecs=%d; currentLocal=%s" % \
          (lastRunLocal, self.frequencySecs, datetime.utcnow()))

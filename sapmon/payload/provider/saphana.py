@@ -152,6 +152,7 @@ class SapHanaCheck(SapmonCheck):
                                        port = self.hanaConfig.port,
                                        user = self.hanaConfig.user,
                                        password = self.hanaConfig.password,
+                                       timeout = 5,
                                        CONNECTTIMEOUT = self.hanaConfig.timeout)
             # Validate that we're indeed connected
             if connection.isconnected():
@@ -294,6 +295,7 @@ class SapHanaCheck(SapmonCheck):
 
       # Execute SQL statement
       try:
+         self.tracer.debug("executing SQL statement %s" % preparedSql)
          cursor.execute(preparedSql)
          colIndex = {col[0] : idx for idx, col in enumerate(cursor.description)}
          resultRows = cursor.fetchall()
@@ -311,16 +313,17 @@ class SapHanaCheck(SapmonCheck):
 
       # Disconnect from HANA server to avoid memory leaks
       try:
+         self.tracer.debug("closing HANA connection")
          connection.close()
       except Exception as e:
-         self.tracer.error("could not disconnect from HANA instance (%s)" % e)
+         self.tracer.error("could not close connection to HANA instance (%s)" % e)
          return False
 
       self.tracer.info("successfully ran SQL for check %s" % self.name)
       return True
 
    # Parse result of the query against M_LANDSCAPE_HOST_CONFIGURATION and store it internally
-   def parseHostConfig(self):
+   def parseHostConfig(self) -> bool:
       self.tracer.info("parsing HANA host configuration and storing it in provider state")
 
       # Iterate through the results and store a mini version in the global provider state
@@ -338,8 +341,13 @@ class SapHanaCheck(SapmonCheck):
       return True
 
    # Probe SQL Connection to all nodes in HANA landscape
-   def probeSqlConnection(self):
+   def probeSqlConnection(self,
+                          probeTimeout: int = None) -> bool:
       self.tracer.info("probing SQL connection to all HANA nodes")
+
+      # If no probeTimeout parameter is defined for this action, use the default
+      if probeTimeout is None:
+         probeTimeout = self.hanaConfig.timeout
 
       # For this check, the column storing the local UTC will be used for TimeGenerated
       self.colTimeGenerated = COL_LOCAL_UTC
@@ -357,25 +365,40 @@ class SapHanaCheck(SapmonCheck):
          latency = None
          success = False
 
-         # Probe SQL connection to a particular HANA node
+         # Given the SQL port (3xxyy), calculate hdbnameserver port (3xx01)
+         portNameserver = int(str(self.hanaConfig.port)[:-2] + "01")
+
+         # Probe connection to the hdbnameserver of a particular node
+         # This workaround is required, since in a n+m scale-out scenario (with m>0),
+         # the stand-by nodes will have no hdbindexserver running, hence SQL connection
+         # will fail. Probing hdbnameserver is a safer option to detect connectivity.
          startTime = time.time()
          try:
             connection = dbapi.connect(address = host,
-                                       port = self.hanaConfig.port,
+                                       port = portNameserver,
                                        user = self.hanaConfig.user,
                                        password = self.hanaConfig.password,
-                                       CONNECTTIMEOUT = self.hanaConfig.timeout)
-
-            # If connection is successful, measure latency
-            if connection.isconnected():
+                                       CONNECTTIMEOUT = probeTimeout)
+         except Exception as e:
+            # We know that SQL connections to hdbnameserver will fail
+            # Let's determine if the HANA landscape is up, based on the error code
+            msg = e.errortext.lower()
+            if "89008" in msg or "socket closed" in msg:
                latency = (time.time() - startTime) * 1000
                success = True
-         except Exception as e:
-            self.tracer.error("could not connect to HANA instance %s:%d (%s)" % (host,
-                                                                                 self.hanaConfig.port,
-                                                                                 e))
-         finally:
-            connection.close()
+               self.tracer.debug("received expected error probing HANA nameserver %s:%d (%s" % (host,
+                                                                                                portNameserver,
+                                                                                                e))
+            elif "89001" in msg or "cannot resolve host name" in msg \
+            or "89006" in msg or "connection refused" in msg \
+            or "timeout expired" in msg:
+              self.tracer.error("HANA nameserver %s:%d is not responding to probe (%s)" % (host,
+                                                                                           self.hanaConfig.port,
+                                                                                           e))
+            else:
+              self.tracer.error("unexpected error when probing HANA nameserver %s:%d (%s)" % (host,
+                                                                                              self.hanaConfig.port,
+                                                                                              e))
 
          # Build probing result tuple with current local time
          probeResults.append(
@@ -403,3 +426,4 @@ class SapHanaCheck(SapmonCheck):
       if not self._updateState():
          return False
       return True
+

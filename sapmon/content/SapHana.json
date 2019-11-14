@@ -1,6 +1,6 @@
 {  
     "providerName": "SapHana",
-    "contentVersion": "0.3.0",
+    "contentVersion": "0.3.1",
     "checkType": "SapHanaCheck",
     "checks": [  
         {  
@@ -59,7 +59,10 @@
             "frequencySecs": 60,
             "actions": [  
                 {  
-                    "type": "probeSqlConnection"
+                    "type": "probeSqlConnection",
+                    "parameters": {
+                        "probeTimeout": 3000
+                    }
                 }
             ]
         }

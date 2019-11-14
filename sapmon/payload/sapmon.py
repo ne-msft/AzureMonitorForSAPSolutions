@@ -160,7 +160,8 @@ class _Context(object):
             "Data": result,
          }
          appTracer.debug("metrics=%s" % metrics)
-         analyticsTracer.info(metrics)
+         j = json.dumps(metrics)
+         analyticsTracer.info(j)
 
       return
 
