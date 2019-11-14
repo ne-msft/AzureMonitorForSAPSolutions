@@ -3,7 +3,7 @@ import logging
 import os
 
 # Version of the payload script
-PAYLOAD_VERSION = "0.12.1"
+PAYLOAD_VERSION = "0.13.1"
 
 # Default file/directory locations
 PATH_PAYLOAD       = os.path.dirname(os.path.realpath(__file__))
@@ -11,7 +11,6 @@ PATH_ROOT          = os.path.abspath(os.path.join(PATH_PAYLOAD, ".."))
 PATH_CONTENT       = os.path.join(PATH_ROOT, "content")
 PATH_TRACE         = os.path.join(PATH_ROOT, "trace")
 PATH_STATE         = os.path.join(PATH_ROOT, "state")
-FILENAME_STATEFILE = os.path.join(PATH_STATE, "sapmon.state")
 FILENAME_TRACE     = os.path.join(PATH_TRACE, "sapmon.trc")
 
 # Time formats
@@ -29,6 +28,12 @@ KEYVAULT_NAMING_CONVENTION               = "sapmon-kv-%s"
 STORAGE_ACCOUNT_NAMING_CONVENTION        = "sapmonsto%s"
 STORAGE_QUEUE_NAMING_CONVENTION          = "sapmon-que-%s"
 CUSTOMER_METRICS_QUEUE_NAMING_CONVENTION = "sapmon-anl-%s"
+
+# HANA-specific constants
+TIMEOUT_HANA_MS    = 5000
+COL_LOCAL_UTC      = "_LOCAL_UTC"
+COL_SERVER_UTC     = "_SERVER_UTC"
+COL_TIMESERIES_UTC = "_TIMESERIES_UTC"
 
 # Error codes
 ERROR_GETTING_AUTH_TOKEN       = 10

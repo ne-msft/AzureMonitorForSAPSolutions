@@ -209,7 +209,7 @@ x-ms-date:%s
          stringHash = encodedHash.decode("utf-8")
          return "SharedKey %s:%s" % (self.workspaceId, stringHash)
 
-      self.tracer.info("ingesting telemetry into Log Analytics")
+      self.tracer.info("ingesting telemetry into Log Analytics, custom log %s" % customLog)
 
       # Log Analytics expects a specific time format
       timestamp = datetime.utcnow().strftime(TIME_FORMAT_LOG_ANALYTICS)
