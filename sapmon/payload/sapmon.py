@@ -151,12 +151,13 @@ class _Context(object):
       return
 
    def ingestCustomerAnalytics(self,
+                               customLog: str,
                                resultJson: str) -> None:
       appTracer.info("sending customer analytics")
-      results = json.loads(resultJson, object_hook=JsonDecoder.datetimeHook)
+      results = json.loads(resultJson)
       for result in results:
          metrics = {
-            "Type": c.customLog,
+            "Type": customLog,
             "Data": result,
          }
          appTracer.debug("metrics=%s" % metrics)
@@ -250,7 +251,7 @@ def monitor(args: str) -> None:
 
          # Ingest result into Customer Analytics
          if ctx.enableCustomerAnalytics:
-            ctx.ingestCustomerAnalytics(resultJson)
+            ctx.ingestCustomerAnalytics(check.customLog, resultJson)
 
    appTracer.info("monitor payload successfully completed")
    return
