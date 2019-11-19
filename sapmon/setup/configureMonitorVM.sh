@@ -14,7 +14,7 @@ ExecuteCommand() {
         echo "Try # $retryCounter: Command: $1"
         #Sleep to allow the servers to recover in case the server was unable to serve the request
         sleep $sleepSeconds
-        $1
+        $1 >/dev/null
         if [ $? -eq 0 ]; then
 	        return
         fi
