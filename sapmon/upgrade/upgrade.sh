@@ -59,7 +59,7 @@ az storage queue create --account-name sapmonsto$SAPMON_ID -n sapmon-anl-$SAPMON
 
 echo "Updating Collector VM"
 echo '{
-	"commandToExecute": "git clone https://github.com/Azure/AzureMonitorForSAPSolutions.git --branch '${LATEST_VERSION}' '${LATEST_VERSION}' && rm -fr /var/opt/microsoft/* && cp -a '${LATEST_VERSION}' /var/opt/microsoft && head -n -1 /etc/crontab > temp && mv temp /etc/crontab && echo \"* * * * * root python3 /var/opt/microsoft/'${LATEST_VERSION}'/sapmon/payload/sapmon.py monitor\" >> /etc/crontab"
+	"commandToExecute": "git clone https://github.com/Azure/AzureMonitorForSAPSolutions.git --branch '${LATEST_VERSION}' '${LATEST_VERSION}' && rm -fr /var/opt/microsoft/* && mkdir -p /var/opt/microsoft/'${LATEST_VERSION}' && cp -a '${LATEST_VERSION}'/. /var/opt/microsoft/'${LATEST_VERSION}' && sh /var/opt/microsoft/'${LATEST_VERSION}'/sapmon/setup/configureMonitorVM.sh && head -n -1 /etc/crontab > temp && mv temp /etc/crontab && echo \"* * * * * root python3 /var/opt/microsoft/'${LATEST_VERSION}'/sapmon/payload/sapmon.py monitor\" >> /etc/crontab"
 	}' > script.json
 
 az vm extension set \
