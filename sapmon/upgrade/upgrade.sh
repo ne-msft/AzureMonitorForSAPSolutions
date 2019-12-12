@@ -27,6 +27,7 @@ az extension add -n sap-hana -y
 echo "Fetching information"
 SAPMONITOR=$(az sapmonitor show --subscription $SUBSCRIPTION -g $RESOURCE_GROUP -n $RESOURCE_NAME)
 SAPMON_ID=$(echo $SAPMONITOR | jq .managedResourceGroupName -r | cut -d'-' -f 3)
+DB_NAME=$(echo $SAPMONITOR | jq .hanaDbName -r)
 LATEST_VERSION=$(curl -s https://api.github.com/repos/Azure/AzureMonitorForSAPSolutions/releases/latest | jq .tag_name -r)
 USER_OBJECT_ID=$(az ad signed-in-user show --query objectId -o tsv)
 
@@ -82,9 +83,9 @@ az keyvault set-policy \
 	--object-id $USER_OBJECT_ID \
 	--secret-permissions set get \
 	-o none
-ORIGINAL=$(az keyvault secret show --subscription $SUBSCRIPTION --vault-name sapmon-kv-$SAPMON_ID --name SapHana-SYSTEMDB --query value -o tsv)
+ORIGINAL=$(az keyvault secret show --subscription $SUBSCRIPTION --vault-name sapmon-kv-$SAPMON_ID --name SapHana-$DB_NAME --query value -o tsv)
 NEW=$(echo $ORIGINAL | jq '. + {"EnableCustomerAnalytics":true'})
-az keyvault secret set --subscription $SUBSCRIPTION --vault-name sapmon-kv-$SAPMON_ID --name SapHana-SYSTEMDB --value "$NEW" -o none
+az keyvault secret set --subscription $SUBSCRIPTION --vault-name sapmon-kv-$SAPMON_ID --name SapHana-$DB_NAME --value "$NEW" -o none
 az keyvault delete-policy \
 	--subscription $SUBSCRIPTION \
 	--name sapmon-kv-$SAPMON_ID \
