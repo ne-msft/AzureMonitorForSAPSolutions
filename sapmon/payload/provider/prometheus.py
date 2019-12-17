@@ -6,6 +6,7 @@ import time
 from datetime import datetime,timezone
 import uuid
 import re
+from prometheus_client.samples import Sample
 from prometheus_client.parser import text_string_to_metric_families
 import requests
 from requests.exceptions import Timeout
@@ -14,7 +15,7 @@ from const import *
 from helper.tools import *
 from provider.base import *
 from typing import Dict, List
-
+import random, urllib
 ###############################################################################
 
 class HttpConnection(SapmonConnection):
@@ -25,8 +26,10 @@ class HttpConnection(SapmonConnection):
                 connectionDetails = Dict[str,str]):
         self.tracer = tracer
         self.url=connectionDetails["PrometheusUrl"]
-        self.enabledChecks = set(connectionDetails["enabledChecks"] or [])
+        self._customFields=connectionDetails.get("customFields", {})
+        self.enabledChecks = set(connectionDetails.get("enabledChecks", []))
         self.tracer.info("Created connection for %s and enabled %s" % (self.url, self.enabledChecks))
+        self.instance_name = urllib.parse.urlparse(self.url).netloc
 
     def isCheckEnabled(self, check):
         self.tracer.info("Checking %s in set %s" % (check.fullname, self.enabledChecks))
@@ -38,6 +41,15 @@ class HttpConnection(SapmonConnection):
     def disconnect(self):
         return True
 
+    @property
+    def customFields(self):
+        for k,v in self._customFields.items():
+            yield (k, v)
+
+    @property
+    def instance(self):
+        return self.instance_name
+    
     def fetch(self):
         try:
             resp = requests.get(self.url, timeout = (2,5))
@@ -80,10 +92,10 @@ class PrometheusCheck(SapmonCheck):
         data = promUrl.fetch()
         self.tracer.info("Fetching prometheus data - Done")
         # But still always convert into a JSON string
-        return self.convertResultIntoJson(data)
+        return self.convertResultIntoJson(data, promUrl)
 
     # Convert last result into a JSON string (as required by Log Analytics Data Collector API)
-    def convertResultIntoJson(self, promData):
+    def convertResultIntoJson(self, promData, promUrl):
         correlation_id = str(uuid.uuid4())
         isotime_fallback = time.time()
         
@@ -100,18 +112,24 @@ class PrometheusCheck(SapmonCheck):
             Convert a prometheus metric sample to Python dictionary for serialization
             FIXME: It might be cleaner to have this as part of a custom encoder
             """
-            self.tracer.debug("Converting %s" % str(sample))
+            # FOR TESTING ONLY!
+            value_rand = sample.value
+            #if sample.name == "ha_cluster_corosync_quorate":
+            #    value_rand = int(random.randrange(10) > 0)
+            #self.tracer.debug("Converting %s" % str(sample))
+            sample.labels["instance"] = promUrl.instance
             sample_dict = {
                 "name" : sample.name,
                 "labels" : json.dumps(sample.labels),
-                "value" : sample.value,
+                "value" : value_rand,
                 # Prefer the usage of metric provided timestamp, fall back to using our own
                 "timestamp_unix": sample.timestamp if sample.timestamp is not None else isotime_fallback,
                 self.COL_TIME_GENERATED: convert_timestamp_cached(sample.timestamp if sample.timestamp is not None else isotime_fallback),
-                # Needs to be defined
-                "hostname": "pacemakertest",
+                "instance": promUrl.instance,
                 "correlation_id": correlation_id}
-            self.tracer.debug("Converted to %s" % str(sample_dict))
+            for (k, v) in promUrl.customFields:
+                sample_dict["custom_%s" % k] = v
+            #self.tracer.debug("Converted to %s" % str(sample_dict))
             return sample_dict
 
         def filter_prometheus_metric(metric):
@@ -131,6 +149,7 @@ class PrometheusCheck(SapmonCheck):
         self.tracer.info("converting result set into JSON")
         for family in filter(filter_prometheus_metric, text_string_to_metric_families(promData)):
             resultSet.extend(map(prometheusSample2Dict, family.samples))
+        resultSet.append(prometheusSample2Dict(Sample("up", dict(), 1 if promData else 0)))
         # FixMe: What is the impact of using the custom JsonEncoder?
         return json.dumps(resultSet) 
 
