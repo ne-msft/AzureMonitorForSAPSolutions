@@ -1,6 +1,9 @@
 # Azure modules
 from azure.common.credentials import BasicTokenAuthentication
 from azure.mgmt.storage import StorageManagementClient
+from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
+
 
 # Python modules
 import base64
@@ -91,13 +94,9 @@ class AzureKeyVault:
       self.tracer.info("initializing KeyVault %s" % kvName)
       self.kvName = kvName
       self.uri = "https://%s.vault.azure.net" % kvName
-      self.token = AzureInstanceMetadataService.getAuthToken(self.tracer,
-                                                             "https://vault.azure.net",
-                                                             msiClientId = msiClientId)
-      self.headers = {
-         "Authorization": "Bearer %s" % self.token,
-         "Content-Type":  "application/json"
-         }
+      # TODO: Add Tracing
+      self.token = DefaultAzureCredential(clientId = msiClientId)
+      self.kv_client = SecretClient(vault_url=self.uri, credential = self.token)
 
    # Easy access to KeyVault REST endpoints
    def _sendRequest(self,
@@ -119,15 +118,12 @@ class AzureKeyVault:
                  secretName: str,
                  secretValue: str) -> bool:
       self.tracer.info("setting KeyVault secret for secretName=%s" % secretName)
-      success = False
       try:
-         (success, response) = self._sendRequest("%s/secrets/%s" % (self.uri, secretName),
-                                                 method = requests.put,
-                                                 data   = json.dumps({"value": secretValue}))
+         self.kv_client.set_secret(secretName, secretValue)
       except Exception as e:
          self.tracer.critical("could not set KeyVault secret (%s)" % e)
          sys.exit(ERROR_SETTING_KEYVAULT_SECRET)
-      return success
+      return True
 
    # Get the current version of a specific secret in the KeyVault
    def getSecret(self,
@@ -135,7 +131,7 @@ class AzureKeyVault:
       self.tracer.info("getting KeyVault secret for secretId=%s" % secretId)
       secret = None
       try:
-         (success, secret) = self._sendRequest(secretId)
+         secret = self.kv_client.get_secret(secretName)
       except Exception as e:
          self.tracer.error("could not get KeyVault secret for secretId=%s (%s)" % (secretId, e))
       return secret
@@ -145,11 +141,10 @@ class AzureKeyVault:
       self.tracer.info("getting current KeyVault secrets")
       secrets = {}
       try:
-         (success, kvSecrets) = self._sendRequest("%s/secrets" % self.uri)
-         self.tracer.debug("kvSecrets=%s" % kvSecrets)
+         kvSecrets = self.kv_client.list_properties_of_secrets()
          for k in kvSecrets:
-            id = k["id"].split("/")[-1]
-            secrets[id] = self.getSecret(k["id"])
+            secrets[k.name] = self.kv_client.get_secret(k.name).value
+         self.tracer.debug("secrets=%s" % secrets)
       except Exception as e:
          self.tracer.error("could not get current KeyVault secrets (%s)" % e)
       return secrets
@@ -158,14 +153,14 @@ class AzureKeyVault:
    def exists(self) -> bool:
       self.tracer.info("checking if KeyVault %s exists" % self.kvName)
       try:
-         (success, response) = self._sendRequest("%s/secrets" % self.uri)
+         kvSecrets = self.kv_client.list_properties_of_secrets(max_page_size=1)
+         if kvSecrets:
+            self.tracer.info("KeyVault %s exists" % self.kvName)
+            return True
       except Exception as e:
          self.tracer.error("could not determine is KeyVault %s exists (%s)" % (self.kvName, e))
-      if success:
-         self.tracer.info("KeyVault %s exists" % self.kvName)
-      else:
-         self.tracer.info("KeyVault %s does not exist" % self.kvName)
-      return success
+      self.tracer.info("KeyVault %s does not exist" % self.kvName)
+      return False
 
 ###############################################################################
 
