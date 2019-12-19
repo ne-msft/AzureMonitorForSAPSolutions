@@ -131,7 +131,7 @@ class _Context(object):
             hanaDetails["HanaDbPassword"] = password
             appTracer.debug("retrieved HANA password successfully from KeyVault")
          except Exception as e:
-            appTracer.critical("could not fetch HANA password (instance=%s) from KeyVault (%s)" % (h, e))
+            appTracer.critical("could not fetch HANA password (instance=%s) from KeyVault (%s)" % (hanaDetails["HanaHostname"], e))
             sys.exit(ERROR_GETTING_HANA_CREDENTIALS)
       self.enableCustomerAnalytics = hanaDetails.get("EnableCustomerAnalytics", False)
       SapHanaConfig.update(hanaDetails)

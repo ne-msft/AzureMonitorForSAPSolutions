@@ -300,7 +300,7 @@ class SapHanaCheck(SapmonCheck):
          colIndex = {col[0] : idx for idx, col in enumerate(cursor.description)}
          resultRows = cursor.fetchall()
       except Exception as e:
-         self.tracer.error("could not execute SQL %s (%s)" % (query, e))
+         self.tracer.error("could not execute SQL %s (%s)" % (preparedSql, e))
          return False
 
       self.lastResult = (colIndex, resultRows)
