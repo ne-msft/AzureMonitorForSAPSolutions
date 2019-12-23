@@ -34,12 +34,12 @@ sapmonContentTypes = {
 # Internal context handler
 class _Context(object):
    azKv = None
-   contentProviders = []
    hanaInstances = []
    sapmonId = None
    vmInstance = None
    vmTage = None
    enableCustomerAnalytics = None
+   providerSecrets = []
 
    def __init__(self,
                 operation: str):
@@ -68,29 +68,7 @@ class _Context(object):
       if not self.azKv.exists():
          sys.exit(ERROR_KEYVAULT_NOT_FOUND)
 
-      # Initialize monitoring content
-      self.initMonitoringContent()
       appTracer.info("successfully initialized context")
- 
-   # Initialize all monitoring content (pre-delivered via content/*.json)
-   def initMonitoringContent(self) -> None:
-      global appTracer
-      appTracer.info("initializing monitoring content")
-
-      # Iterate through content/*.json files
-      for filename in os.listdir(PATH_CONTENT):
-         if not filename.endswith(".json"):
-            continue
-         providerName = "%sProvider" % re.search("(.*).json", filename).group(1)
-         contentFullPath = "%s/%s" % (PATH_CONTENT, filename)
-         appTracer.debug("providerName=%s, contentFullPath=%s" % (providerName, contentFullPath))
-
-         contentProvider = eval(providerName)(appTracer, contentFullPath)
-         if contentProvider:
-            self.contentProviders.append(contentProvider)
-
-      appTracer.info("successfully loaded %d content providers" % len(self.contentProviders))
-      return
 
    # Fetch HANA password from a separate KeyVault
    def fetchHanaPasswordFromKeyVault(self,
@@ -135,7 +113,7 @@ class _Context(object):
             appTracer.critical("could not fetch HANA password (instance=%s) from KeyVault (%s)" % (h, e))
             sys.exit(ERROR_GETTING_HANA_CREDENTIALS)
       self.enableCustomerAnalytics = hanaDetails.get("EnableCustomerAnalytics", False)
-      SapHanaConfig.update(hanaDetails)
+      self.providerSecrets.append(hanaDetails)
 
       # Also extract Log Analytics credentials from secrets
       try:
@@ -216,7 +194,7 @@ def onboard(args: str) -> None:
       "HanaDbPasswordKeyVaultUrl":   args.HanaDbPasswordKeyVaultUrl,
       "HanaDbSqlPort":               args.HanaDbSqlPort,
       "PasswordKeyVaultMsiClientId": args.PasswordKeyVaultMsiClientId,
-      "EnableCustomerAnalytics":       args.EnableCustomerAnalytics,
+      "EnableCustomerAnalytics":     args.EnableCustomerAnalytics,
       })
    appTracer.info("storing HANA credentials as KeyVault secret")
    try:
@@ -246,9 +224,8 @@ def onboard(args: str) -> None:
       appTracer.info("no HANA password provided; need to fetch password from separate KeyVault")
       hanaDetails["HanaDbPassword"] = ctx.fetchHanaPasswordFromKeyVault(hanaDetails["HanaDbPasswordKeyVaultUrl"],
                                                                         hanaDetails["PasswordKeyVaultMsiClientId"])
-   SapHanaConfig.update(hanaDetails)
 
-   if SapHanaProvider.validate(appTracer) == False:
+   if not SapHanaProvider.validate(appTracer, hanaDetails):
       appTracer.critical("validation of HANA instance failed, aborting")
       sys.exit(ERROR_HANA_CONNECTION)
 
@@ -261,7 +238,9 @@ def monitor(args: str) -> None:
    ctx.parseSecrets()
    threads = []
 
-   for provider in ctx.contentProviders:
+   for secrets in ctx.providerSecrets:
+      # There is only one type of provider right now, in the future, the probider name will be a part of the secret
+      provider = initProvider("SapHana", secrets)
       providerThread = providerChecks(provider)
       providerThread.start()
       threads.append(providerThread)
@@ -282,6 +261,19 @@ def ensureDirectoryStructure() -> None:
          sys.stderr.write("could not create required directory %s; please check permissions (%s)" % (path, e))
          sys.exit(ERROR_FILE_PERMISSION_DENIED)
    return
+
+# Initializes a provider based on it's name
+def initProvider(providerName:str, secrets):
+   global appTracer
+   appTracer.info("initializing provider %s" % providerName)
+
+   contentFullPath = "%s/%s.json" % (PATH_CONTENT, providerName)
+   appTracer.debug("providerName=%s, contentFullPath=%s" % (providerName, contentFullPath))
+
+   contentProvider = eval("%sProvider" % providerName)(appTracer, contentFullPath, secrets)
+
+   appTracer.info("successfully loaded content provider %s" % providerName)
+   return contentProvider
 
 # Main function with argument parser
 def main() -> None:

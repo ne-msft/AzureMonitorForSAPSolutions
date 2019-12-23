@@ -13,32 +13,15 @@ from typing import Dict, List
 # SAP HANA modules
 from hdbcli import dbapi
 
-###############################################################################
-
-# Stores configuration specific to a SAP HANA database instance
-class SapHanaConfig(metaclass=Singleton):
-   host = None
-   port = None
-   user = None
-   password = None
-   timeout = TIMEOUT_HANA_MS
-
-   @classmethod
-   def update(cls, hanaDetails):
-      cls.host = hanaDetails.get("HanaHostname", None)
-      cls.port = hanaDetails.get("HanaDbSqlPort", None)
-      cls.user = hanaDetails.get("HanaDbUsername", None)
-      cls.password = hanaDetails.get("HanaDbPassword", None)
-
-###############################################################################
-
 # Stores configuration specific to a SAP HANA database instance
 class SapHanaProvider(SapmonContentProvider):
    def __init__(self,
                 tracer,
                 contentFullPath,
+                secrets,
                 **kwargs):
       self.tracer = tracer
+      self.secrets = secrets
       if not self.initContent(contentFullPath):
          return None
       super().__init__(tracer, contentFullPath, **kwargs)
@@ -74,8 +57,7 @@ class SapHanaProvider(SapmonContentProvider):
          try:
             self.tracer.info("instantiate check of type %s" % self.checkType)
             self.tracer.debug("checkOptions=%s" % checkOptions)
-            checkOptions["provider"] = self
-            check = eval(self.checkType)(**checkOptions)
+            check = eval(self.checkType)(self, self.secrets, **checkOptions)
             self.checks.append(check)
          except Exception as e:
             self.tracer.error("could not instantiate new check of type %s (%s)" % (self.checkType, e))
@@ -83,24 +65,23 @@ class SapHanaProvider(SapmonContentProvider):
 
    # Static method called by the onboarding payload to validate the HANA connection
    @staticmethod
-   def validate(tracer) -> bool:
+   def validate(tracer, hanaConfig) -> bool:
       tracer.info("connecting to HANA instance to run test query")
-      hanaConfig = SapHanaConfig()
 
       # Try to establish a HANA connection using the details provided by the user
       try:
-         connection = dbapi.connect(address = hanaConfig.host,
-                                    port = hanaConfig.port,
-                                    user = hanaConfig.user,
-                                    password = hanaConfig.password,
-                                    CONNECTTIMEOUT = hanaConfig.timeout)
+         connection = dbapi.connect(address = hanaConfig["HanaHostname"],
+                                    port = hanaConfig["HanaDbSqlPort"],
+                                    user = hanaConfig["HanaDbUsername"],
+                                    password = hanaConfig["HanaDbPassword"],
+                                    CONNECTTIMEOUT = TIMEOUT_HANA_MS)
          cursor = connection.cursor()
          if not connection.isconnected():
             tracer.error("unable to validate connection status")
             return False
       except Exception as e:
-         tracer.error("could not connect to HANA node %s:%d (%s)" % (hanaConfig.host,
-                                                                     hanaConfig.port,
+         tracer.error("could not connect to HANA node %s:%d (%s)" % (hanaConfig["HanaHostname"],
+                                                                     hanaConfig["HanaDbSqlPort"],
                                                                      e))
          return False
 
@@ -121,11 +102,13 @@ class SapHanaProvider(SapmonContentProvider):
 class SapHanaCheck(SapmonCheck):
    lastResult = None
    colTimeGenerated = None
-   hanaConfig = SapHanaConfig()
+   hanaConfig = {}
    
    def __init__(self,
                 provider: SapmonContentProvider,
+                secrets,
                 **kwargs):
+      self.hanaConfig = secrets
       super().__init__(provider, **kwargs)
 
    # Obtain one working HANA connection (client-side failover logic)
@@ -136,7 +119,7 @@ class SapHanaCheck(SapmonCheck):
       if "hostConfig" not in self.provider.state:
          # Host config has not been retrieved yet; our only candidate is the one provided by user
          self.tracer.debug("no host config has been persisted to provider yet, using user-provided host")
-         hostsToTry = [self.hanaConfig.host]
+         hostsToTry = [self.secrets["HanaHostname"]]
       else:
          # Host config has already been retrieved; rank the hosts to compile a list of hosts to try
          self.tracer.debug("host config has been persisted to provider, deriving prioritized host list")
@@ -149,18 +132,18 @@ class SapHanaCheck(SapmonCheck):
       for host in hostsToTry:
          try:
             connection = dbapi.connect(address = host,
-                                       port = self.hanaConfig.port,
-                                       user = self.hanaConfig.user,
-                                       password = self.hanaConfig.password,
+                                       port = self.hanaConfig["HanaDbSqlPort"],
+                                       user = self.hanaConfig["HanaDbUsername"],
+                                       password = self.hanaConfig["HanaDbPassword"],
                                        timeout = 5,
-                                       CONNECTTIMEOUT = self.hanaConfig.timeout)
+                                       CONNECTTIMEOUT = TIMEOUT_HANA_MS)
             # Validate that we're indeed connected
             if connection.isconnected():
                cursor = connection.cursor()
                break
          except Exception as e:
             self.tracer.warning("could not connect to HANA node %s:%d (%s)" % (host,
-                                                                               self.hanaConfig.port,
+                                                                               self.hanaConfig["HanaDbSqlPort"],
                                                                                e))
       if not cursor:
          self.tracer.error("unable to connect to any HANA node (hostsToTry=%s)" % hostsToTry)
@@ -347,7 +330,7 @@ class SapHanaCheck(SapmonCheck):
 
       # If no probeTimeout parameter is defined for this action, use the default
       if probeTimeout is None:
-         probeTimeout = self.hanaConfig.timeout
+         probeTimeout = TIMEOUT_HANA_MS
 
       # For this check, the column storing the local UTC will be used for TimeGenerated
       self.colTimeGenerated = COL_LOCAL_UTC
@@ -366,7 +349,7 @@ class SapHanaCheck(SapmonCheck):
          success = False
 
          # Given the SQL port (3xxyy), calculate hdbnameserver port (3xx01)
-         portNameserver = int(str(self.hanaConfig.port)[:-2] + "01")
+         portNameserver = int(str(self.hanaConfig["HanaDbSqlPort"])[:-2] + "01")
 
          # Probe connection to the hdbnameserver of a particular node
          # This workaround is required, since in a n+m scale-out scenario (with m>0),
@@ -374,11 +357,11 @@ class SapHanaCheck(SapmonCheck):
          # will fail. Probing hdbnameserver is a safer option to detect connectivity.
          startTime = time.time()
          try:
-            connection = dbapi.connect(address = host,
-                                       port = portNameserver,
-                                       user = self.hanaConfig.user,
-                                       password = self.hanaConfig.password,
-                                       CONNECTTIMEOUT = probeTimeout)
+            dbapi.connect(address = host,
+                          port = portNameserver,
+                          user = self.hanaConfig["HanaDbUsername"],
+                          password = self.hanaConfig["HanaDbPassword"],
+                          CONNECTTIMEOUT = probeTimeout)
          except Exception as e:
             # We know that SQL connections to hdbnameserver will fail
             # Let's determine if the HANA landscape is up, based on the error code
@@ -393,11 +376,11 @@ class SapHanaCheck(SapmonCheck):
             or "89006" in msg or "connection refused" in msg \
             or "timeout expired" in msg:
               self.tracer.error("HANA nameserver %s:%d is not responding to probe (%s)" % (host,
-                                                                                           self.hanaConfig.port,
+                                                                                           self.hanaConfig["HanaDbSqlPort"],
                                                                                            e))
             else:
               self.tracer.error("unexpected error when probing HANA nameserver %s:%d (%s)" % (host,
-                                                                                              self.hanaConfig.port,
+                                                                                              self.hanaConfig["HanaDbSqlPort"],
                                                                                               e))
 
          # Build probing result tuple with current local time

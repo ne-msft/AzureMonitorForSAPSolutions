@@ -18,6 +18,7 @@ class SapmonContentProvider:
    version = None
    checks = []
    state = {}
+   secrets = {}
 
    def __init__(self,
                 tracer: logging.Logger,
