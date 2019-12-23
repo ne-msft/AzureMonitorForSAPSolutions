@@ -14,6 +14,7 @@ import json
 import os
 import re
 import sys
+import threading
 
 # Payload modules
 from const import *
@@ -168,6 +169,35 @@ class _Context(object):
 
 ###############################################################################
 
+class providerChecks(threading.Thread):
+   def __init__(self, provider):
+      threading.Thread.__init__(self)
+      self.provider = provider
+
+   def run(self):
+      for check in self.provider.checks:
+         appTracer.info("starting check %s.%s" % (self.provider.name, check.name))
+         # Skip this check if it's not enabled or not due yet
+         if (check.isEnabled() == False) or (check.isDue() == False):
+            continue
+
+         # Run all actions that are part of this check
+         resultJson = check.run()
+
+         # Ingest result into Log Analytics
+         ctx.azLa.ingest(check.customLog,
+                         resultJson,
+                         check.colTimeGenerated)
+
+         # Persist updated internal state to provider state file
+         self.provider.writeState()
+
+         # Ingest result into Customer Analytics
+         if ctx.enableCustomerAnalytics:
+             ctx.ingestCustomerAnalytics(check.customLog, resultJson)
+
+###############################################################################
+
 def onboard(args: str) -> None:
    """
    Store credentials in the customer KeyVault
@@ -229,29 +259,15 @@ def onboard(args: str) -> None:
 def monitor(args: str) -> None:
    appTracer.info("starting monitor payload")
    ctx.parseSecrets()
+   threads = []
 
    for provider in ctx.contentProviders:
-      for check in provider.checks:
-         appTracer.info("starting check %s.%s" % (provider.name, check.name))
+      providerThread = providerChecks(provider)
+      providerThread.start()
+      threads.append(providerThread)
 
-         # Skip this check if it's not enabled or not due yet
-         if (check.isEnabled() == False) or (check.isDue() == False):
-            continue
-
-         # Run all actions that are part of this check
-         resultJson = check.run()
-
-         # Ingest result into Log Analytics
-         ctx.azLa.ingest(check.customLog,
-                         resultJson,
-                         check.colTimeGenerated)
-
-         # Persist updated internal state to provider state file
-         provider.writeState()
-
-         # Ingest result into Customer Analytics
-         if ctx.enableCustomerAnalytics:
-            ctx.ingestCustomerAnalytics(check.customLog, resultJson)
+   for thread in threads:
+      thread.join()
 
    appTracer.info("monitor payload successfully completed")
    return
