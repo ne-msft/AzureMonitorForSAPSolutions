@@ -19,10 +19,13 @@ class SapmonContentProvider:
    checks = []
    state = {}
    secrets = {}
+   stateFileSuffix = None
 
    def __init__(self,
                 tracer: logging.Logger,
-                contentFullPath: str):
+                contentFullPath: str,
+                stateFileSuffix: str):
+      self.stateFileSuffix = stateFileSuffix
       self.readState()
 
    # Read most recent, provider-specific state from state file
@@ -32,7 +35,7 @@ class SapmonContentProvider:
 
       # Parse JSON for all check states of this provider
       try:
-         filename = os.path.join(PATH_STATE, "%s.state" % self.name)
+         filename = os.path.join(PATH_STATE, "%s-%s.state" % (self.name, self.stateFileSuffix))
          self.tracer.debug("filename=%s" % filename)
          with open(filename, "r") as file:
             data = file.read()
@@ -78,12 +81,12 @@ class SapmonContentProvider:
 
       # Write JSON object into state file
       try:
-         filename = os.path.join(PATH_STATE, "%s.state" % self.name)
+         filename = os.path.join(PATH_STATE, "%s-%s.state" % (self.name, self.stateFileSuffix))
          self.tracer.debug("filename=%s" % filename)
          with open(filename, "w") as file:
             json.dump(jsonData, file, indent=3, cls=JsonEncoder)
       except Exception as e:
-         self.tracer.error("could not write state file %s (%s)" % (FILENAME_STATEFILE, e))
+         self.tracer.error("could not write state file %s (%s)" % (filename, e))
          return False
 
       self.tracer.info("successfully wrote state file for content provider %s" % self.name)

@@ -22,9 +22,10 @@ class SapHanaProvider(SapmonContentProvider):
                 **kwargs):
       self.tracer = tracer
       self.secrets = secrets
+      stateFileSuffix = self.secrets["HanaHostname"]
       if not self.initContent(contentFullPath):
          return None
-      super().__init__(tracer, contentFullPath, **kwargs)
+      super().__init__(tracer, contentFullPath, stateFileSuffix, **kwargs)
 
    # Read content from provider definition
    # TODO(tniek): Refactor this into the generic provider class
@@ -119,7 +120,7 @@ class SapHanaCheck(SapmonCheck):
       if "hostConfig" not in self.provider.state:
          # Host config has not been retrieved yet; our only candidate is the one provided by user
          self.tracer.debug("no host config has been persisted to provider yet, using user-provided host")
-         hostsToTry = [self.secrets["HanaHostname"]]
+         hostsToTry = [self.hanaConfig["HanaHostname"]]
       else:
          # Host config has already been retrieved; rank the hosts to compile a list of hosts to try
          self.tracer.debug("host config has been persisted to provider, deriving prioritized host list")
