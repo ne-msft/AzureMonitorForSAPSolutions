@@ -15,6 +15,7 @@ import os
 import re
 import sys
 import threading
+import time
 
 # Payload modules
 from const import *
@@ -99,21 +100,21 @@ class _Context(object):
 
       # Until we have multiple provider instances, just pick the first HANA config
       secrets = self.azKv.getCurrentSecrets()
-      hanaSecrets = sliceDict(secrets, "SapHana-")
+      hanaSecrets = sliceDict(secrets, "SapHana")
       hanaJson = list(hanaSecrets.values())[0]
       hanaDetails = json.loads(hanaJson)
-      if not hanaDetails["HanaDbPassword"]:
-         appTracer.info("no HANA password provided; need to fetch password from separate KeyVault")
-         try:
-            password = self.fetchHanaPasswordFromKeyVault(hanaDetails["HanaDbPasswordKeyVaultUrl"],
-                                                          hanaDetails["PasswordKeyVaultMsiClientId"])
-            hanaDetails["HanaDbPassword"] = password
-            appTracer.debug("retrieved HANA password successfully from KeyVault")
-         except Exception as e:
-            appTracer.critical("could not fetch HANA password (instance=%s) from KeyVault (%s)" % (hanaDetails["HanaHostname"], e))
-            sys.exit(ERROR_GETTING_HANA_CREDENTIALS)
-      self.enableCustomerAnalytics = hanaDetails.get("EnableCustomerAnalytics", False)
-      self.providerSecrets.append(hanaDetails)
+      for hanaDetail in hanaDetails:
+         if not hanaDetail["HanaDbPassword"]:
+            appTracer.info("no HANA password provided; need to fetch password from separate KeyVault")
+            try:
+               password = self.fetchHanaPasswordFromKeyVault(hanaDetail["HanaDbPasswordKeyVaultUrl"],
+                                                             hanaDetail["PasswordKeyVaultMsiClientId"])
+               hanaDetail["HanaDbPassword"] = password
+               appTracer.debug("retrieved HANA password successfully from KeyVault")
+            except Exception as e:
+               appTracer.critical("could not fetch HANA password (instance=%s) from KeyVault (%s)" % (hanaDetails["HanaHostname"], e))
+               sys.exit(ERROR_GETTING_HANA_CREDENTIALS)
+         self.providerSecrets.append(hanaDetail)
 
       # Also extract Log Analytics credentials from secrets
       try:
@@ -183,22 +184,25 @@ def onboard(args: str) -> None:
    """
    appTracer.info("starting onboarding payload")
 
-   # Store provided credentials as a KeyVault secret
-   hanaSecretName = "SapHana-%s" % args.HanaDbName
-   appTracer.debug("hanaSecretName=%s" % hanaSecretName)
-   hanaSecretValue = json.dumps({
-      "HanaHostname":                args.HanaHostname,
-      "HanaDbName":                  args.HanaDbName,
-      "HanaDbUsername":              args.HanaDbUsername,
-      "HanaDbPassword":              args.HanaDbPassword,
-      "HanaDbPasswordKeyVaultUrl":   args.HanaDbPasswordKeyVaultUrl,
-      "HanaDbSqlPort":               args.HanaDbSqlPort,
-      "PasswordKeyVaultMsiClientId": args.PasswordKeyVaultMsiClientId,
-      "EnableCustomerAnalytics":     args.EnableCustomerAnalytics,
-      })
+   if args.HanaDbConfigurationJson is None:
+      # Store provided credentials as a KeyVault secret
+      hanaSecretValue = json.dumps([{
+         "HanaHostname":                args.HanaHostname,
+         "HanaDbName":                  args.HanaDbName,
+         "HanaDbUsername":              args.HanaDbUsername,
+         "HanaDbPassword":              args.HanaDbPassword,
+         "HanaDbPasswordKeyVaultUrl":   args.HanaDbPasswordKeyVaultUrl,
+         "HanaDbSqlPort":               args.HanaDbSqlPort,
+         "PasswordKeyVaultMsiClientId": args.PasswordKeyVaultMsiClientId,
+         "EnableCustomerAnalytics":     args.EnableCustomerAnalytics,
+         }])
+   else:
+      # https://stackoverflow.com/questions/18006161/how-to-pass-dictionary-as-command-line-argument-to-python-script
+      jsonObj = json.loads(args.HanaDbConfigurationJson)
+      hanaSecretValue = json.dumps(jsonObj)
    appTracer.info("storing HANA credentials as KeyVault secret")
    try:
-      ctx.azKv.setSecret(hanaSecretName, hanaSecretValue)
+      ctx.azKv.setSecret("SapHana", hanaSecretValue)
    except Exception as e:
       appTracer.critical("could not store HANA credentials in KeyVault secret (%s)" % e)
       sys.exit(ERROR_SETTING_KEYVAULT_SECRET)
@@ -220,14 +224,15 @@ def onboard(args: str) -> None:
 
    # Check connectivity to HANA instance
    hanaDetails = json.loads(hanaSecretValue)
-   if not hanaDetails["HanaDbPassword"]:
-      appTracer.info("no HANA password provided; need to fetch password from separate KeyVault")
-      hanaDetails["HanaDbPassword"] = ctx.fetchHanaPasswordFromKeyVault(hanaDetails["HanaDbPasswordKeyVaultUrl"],
-                                                                        hanaDetails["PasswordKeyVaultMsiClientId"])
+   for hanaDetail in hanaDetails:
+      if not hanaDetail["HanaDbPassword"]:
+         appTracer.info("no HANA password provided; need to fetch password from separate KeyVault")
+         hanaDetail["HanaDbPassword"] = ctx.fetchHanaPasswordFromKeyVault(hanaDetail["HanaDbPasswordKeyVaultUrl"],
+                                                                          hanaDetail["PasswordKeyVaultMsiClientId"])
 
-   if not SapHanaProvider.validate(appTracer, hanaDetails):
-      appTracer.critical("validation of HANA instance failed, aborting")
-      sys.exit(ERROR_HANA_CONNECTION)
+      if not SapHanaProvider.validate(appTracer, hanaDetail):
+         appTracer.critical("validation of HANA instance failed, aborting")
+         sys.exit(ERROR_HANA_CONNECTION)
 
    appTracer.info("onboarding payload successfully completed")
    return
@@ -239,7 +244,7 @@ def monitor(args: str) -> None:
    threads = []
 
    for secrets in ctx.providerSecrets:
-      # There is only one type of provider right now, in the future, the probider name will be a part of the secret
+      # There is only one type of provider right now, in the future, the provider name will be a part of the secret
       provider = initProvider("SapHana", secrets)
       providerThread = providerChecks(provider)
       providerThread.start()
@@ -302,15 +307,15 @@ def main() -> None:
    onbParser.set_defaults(func = onboard,
                           command = "onboard")
    onbParser.add_argument("--HanaHostname",
-                          required = True,
+                          required = False,
                           type = str,
                           help = "Hostname of the HDB to be monitored")
    onbParser.add_argument("--HanaDbName",
-                          required = True,
+                          required = False,
                           type = str,
                           help = "Name of the tenant DB (empty if not MDC)")
    onbParser.add_argument("--HanaDbUsername",
-                          required = True,
+                          required = False,
                           type = str,
                           help = "DB username to connect to the HDB tenant")
    onbParser.add_argument("--HanaDbPassword",
@@ -322,7 +327,7 @@ def main() -> None:
                           type = str,
                           help = "URL of KeyVault secret containing HDB password")
    onbParser.add_argument("--HanaDbSqlPort",
-                          required = True,
+                          required = False,
                           type = int,
                           help = "SQL port of the tenant DB")
    onbParser.add_argument("--LogAnalyticsWorkspaceId",
@@ -343,6 +348,11 @@ def main() -> None:
                           action="store_true",
                           dest="EnableCustomerAnalytics")
    onbParser.set_defaults(EnableCustomerAnalytics=False)
+   onbParser.add_argument("--HanaDbConfigurationJson",
+                          required = False,
+                          type = str,
+                          help = "Configurations to connect multiple HANA DBs in JSON format")
+   onbParser.set_defaults(HanaDbConfigurationJson=None)
    args = parser.parse_args()
    appTracer = tracing.initTracer(args)
    ctx = _Context(args.command)
