@@ -15,7 +15,6 @@ import os
 import re
 import sys
 import threading
-import time
 
 # Payload modules
 from const import *
@@ -197,7 +196,7 @@ def onboard(args: str) -> None:
          "EnableCustomerAnalytics":     args.EnableCustomerAnalytics,
          }])
    else:
-      # https://stackoverflow.com/questions/18006161/how-to-pass-dictionary-as-command-line-argument-to-python-script
+      # validate it is actual JSON
       jsonObj = json.loads(args.HanaDbConfigurationJson)
       hanaSecretValue = json.dumps(jsonObj)
    appTracer.info("storing HANA credentials as KeyVault secret")
