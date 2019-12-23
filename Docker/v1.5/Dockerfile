@@ -1,4 +1,4 @@
-FROM ubuntu:16.04
+FROM python:3.4-slim
 
 ARG RELEASE
 RUN apt-get -y update
