@@ -67,7 +67,7 @@ class SapHanaProvider(SapmonContentProvider):
    # Static method called by the onboarding payload to validate the HANA connection
    @staticmethod
    def validate(tracer, hanaConfig) -> bool:
-      tracer.info("connecting to HANA instance to run test query")
+      tracer.info("connecting to HANA instance to run test query. Hostname: %s" % hanaConfig["HanaHostname"])
 
       # Try to establish a HANA connection using the details provided by the user
       try:
