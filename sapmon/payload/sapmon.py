@@ -113,6 +113,7 @@ class _Context(object):
             except Exception as e:
                appTracer.critical("could not fetch HANA password (instance=%s) from KeyVault (%s)" % (hanaDetails["HanaHostname"], e))
                sys.exit(ERROR_GETTING_HANA_CREDENTIALS)
+         ctx.enableCustomerAnalytics = hanaDetail["EnableCustomerAnalytics"]
          self.providerSecrets.append(hanaDetail)
 
       # Also extract Log Analytics credentials from secrets
