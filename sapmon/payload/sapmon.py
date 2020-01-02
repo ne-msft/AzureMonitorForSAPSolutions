@@ -113,6 +113,9 @@ class _Context(object):
             except Exception as e:
                appTracer.critical("could not fetch HANA password (instance=%s) from KeyVault (%s)" % (hanaDetails["HanaHostname"], e))
                sys.exit(ERROR_GETTING_HANA_CREDENTIALS)
+         # Only the last hanaDetail will take affect, but all the EnableCustomerAnalytics flags should be the same
+         # as they are set by HANA RP. TODO: donaliu Refactor out common configs out of hanaDetails
+         ctx.enableCustomerAnalytics = hanaDetail["EnableCustomerAnalytics"]
          self.providerSecrets.append(hanaDetail)
 
       # Also extract Log Analytics credentials from secrets
