@@ -43,3 +43,4 @@ ExecuteCommand "pip3 install prometheus_client"
 ExecuteCommand "pip3 install azure-keyvault-secrets"
 ExecuteCommand "pip3 install azure-identity"
 
+echo '* * * * * root python3 /var/opt/microsoft/v1.5/sapmon/payload/sapmon.py monitor' >/etc/cron.d/sapmon-pacemaker
