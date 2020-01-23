@@ -19,5 +19,5 @@ python3 /var/opt/microsoft/sapmon/%s/payload/sapmon.py onboard \
 
 ## Monitor
 ```bash
-docker run -t <image:tag> python3 /var/opt/microsoft/sapmon/v1.5/sapmon.py monitor
+docker run -t <image:tag> python3 /var/opt/microsoft/sapmon/v1.6/sapmon.py monitor
 ```
