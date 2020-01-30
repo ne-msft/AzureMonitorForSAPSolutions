@@ -113,7 +113,7 @@ class AzureKeyVault:
       self.tracer.info("getting KeyVault secret for secretId=%s" % secretId)
       secret = None
       try:
-         secret = self.kv_client.get_secret(secretName)
+         secret = self.kv_client.get_secret(secretId)
       except Exception as e:
          self.tracer.error("could not get KeyVault secret for secretId=%s (%s)" % (secretId, e))
       return secret
