@@ -264,7 +264,7 @@ def main() -> None:
    prepareParser.set_defaults(func = prepare)
    args = parser.parse_args()
    appTracer = tracing.initTracer(args)
-   ctx = _Context(args.command)
+   ctx = Context(args.command)
    args.func(args)
 
    return

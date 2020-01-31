@@ -2,11 +2,11 @@ import json
 from tools import *
 from provider.saphana import HanaSecretName
 from updateprofile import updateProfile
-from context import _Context
+from context import Context
 from azure import *
 
 class v1_8(updateProfile):
-    def update(self, ctx: _Context, previousVersion: str):
+    def update(self, ctx: Context, previousVersion: str):
         secrets = ctx.azKv.getCurrentSecrets()
         hanaSecrets = sliceDict(secrets, HanaSecretName)
         jSecrets = json.loads(hanaSecrets)
