@@ -23,6 +23,7 @@ from helper.tools import *
 from helper.tracing import *
 from helper.updateprofile import *
 from helper.context import *
+from helper.updatefactory import *
 
 from provider.saphana import *
 
