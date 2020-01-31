@@ -2,7 +2,6 @@
 # of the monitor. For example to upgrade to a version v1.6 from v1.5 we will need to update the format of the secrets
 # stored in the keyvault as v1.6(first version with multi instance support) requires the secrets to be stored in a specific format.
 
-from context import _Context
 class updateProfile(object):
     updatefunc = None
     def update(self,ctx,previousVersion):
