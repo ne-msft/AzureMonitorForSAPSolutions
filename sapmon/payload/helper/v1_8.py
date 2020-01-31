@@ -1,9 +1,9 @@
 import json
-from tools import *
+from helper.tools import *
 from provider.saphana import HanaSecretName
-from updateprofile import updateProfile
-from context import Context
-from azure import *
+from helper.updateprofile import updateProfile
+from helper.context import Context
+from helper.azure import *
 
 class v1_8(updateProfile):
     def update(self, ctx: Context, previousVersion: str):
