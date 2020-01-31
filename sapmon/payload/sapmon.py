@@ -264,13 +264,11 @@ def main() -> None:
    prepareParser.set_defaults(func = prepare)
    args = parser.parse_args()
    appTracer = tracing.initTracer(args)
-   ctx = Context(args.command)
+   ctx = Context(appTracer, args.command)
    args.func(args)
 
    return
 
-appTracer = None
-analyticsTracer = None
 ctx = None
 if __name__ == "__main__":
    main()

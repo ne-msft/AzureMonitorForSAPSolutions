@@ -8,18 +8,9 @@
 #
 
 # Python modules
-from abc import ABC, abstractmethod
-import argparse
-import json
-import os
 import re
-import sys
-import threading
 
 # Payload modules
-from const import *
-from azure import *
-from helper.tools import *
 from helper.tracing import *
 
 from provider.saphana import *
@@ -33,50 +24,52 @@ class Context(object):
    vmTage = None
    enableCustomerAnalytics = None
    providerSecrets = []
+   analyticsTracer = None
+   appTracer = None
 
-   def __init__(self,
+   def __init__(self, tracer,
                 operation: str):
-      global appTracer, analyticsTracer
-      appTracer.info("initializing context")
+      self.appTracer = tracer
+      self.appTracer.info("initializing context")
 
       # Retrieve sapmonId via IMDS
-      self.vmInstance = AzureInstanceMetadataService.getComputeInstance(appTracer,
+      self.vmInstance = AzureInstanceMetadataService.getComputeInstance(self.appTracer,
                                                                         operation)
       self.vmTags = dict(
          map(lambda s : s.split(':'),
          self.vmInstance["tags"].split(";"))
       )
-      appTracer.debug("vmTags=%s" % self.vmTags)
+      self.appTracer.debug("vmTags=%s" % self.vmTags)
       self.sapmonId = self.vmTags["SapMonId"]
-      appTracer.debug("sapmonId=%s " % self.sapmonId)
+      self.appTracer.debug("sapmonId=%s " % self.sapmonId)
 
       # Add storage queue log handler to appTracer
-      tracing.addQueueLogHandler(appTracer, self)
+      tracing.addQueueLogHandler(self.appTracer, self)
 
       # Initializing appTracer for emitting metrics
-      analyticsTracer = tracing.initCustomerAnalyticsTracer(appTracer, self)
+      self.analyticsTracer = tracing.initCustomerAnalyticsTracer(self.appTracer, self)
 
       # Get KeyVault
-      self.azKv = AzureKeyVault(appTracer, KEYVAULT_NAMING_CONVENTION % self.sapmonId, self.vmTags.get("SapMonMsiClientId", None))
+      self.azKv = AzureKeyVault(self.appTracer, KEYVAULT_NAMING_CONVENTION % self.sapmonId, self.vmTags.get("SapMonMsiClientId", None))
       if not self.azKv.exists():
          sys.exit(ERROR_KEYVAULT_NOT_FOUND)
 
-      appTracer.info("successfully initialized context")
+      self.appTracer.info("successfully initialized context")
 
    # Fetch HANA password from a separate KeyVault
    def fetchHanaPasswordFromKeyVault(self,
                                      passwordKeyVault: str,
                                      passwordKeyVaultMsiClientId: str) -> str:
-      global appTracer
-      appTracer.info("fetching HANA credentials from KeyVault")
+
+      self.appTracer.info("fetching HANA credentials from KeyVault")
 
       # Extract KeyVault name from secret URL
       vaultNameSearch = re.search("https://(.*).vault.azure.net", passwordKeyVault)
-      appTracer.debug("vaultNameSearch=%s" % vaultNameSearch.group(1))
+      self.appTracer.debug("vaultNameSearch=%s" % vaultNameSearch.group(1))
 
       # Create temporary KeyVault object to get relevant secret
-      kv = AzureKeyVault(appTracer, vaultNameSearch.group(1), passwordKeyVaultMsiClientId)
-      appTracer.debug("kv=%s" % kv)
+      kv = AzureKeyVault(self.appTracer, vaultNameSearch.group(1), passwordKeyVaultMsiClientId)
+      self.appTracer.debug("kv=%s" % kv)
 
       return kv.getSecret(passwordKeyVault)
 
@@ -84,8 +77,8 @@ class Context(object):
    # TODO - make this content-specific
    def parseSecrets(self) -> None:
 
-      global appTracer
-      appTracer.info("parsing secrets")
+
+      self.appTracer.info("parsing secrets")
 
       # Until we have multiple provider instances, just pick the first HANA config
       secrets = self.azKv.getCurrentSecrets()
@@ -94,14 +87,14 @@ class Context(object):
       hanaDetails = json.loads(hanaJson)
       for hanaDetail in hanaDetails:
          if not hanaDetail["HanaDbPassword"]:
-            appTracer.info("no HANA password provided; need to fetch password from separate KeyVault")
+            self.appTracer.info("no HANA password provided; need to fetch password from separate KeyVault")
             try:
                password = self.fetchHanaPasswordFromKeyVault(hanaDetail["HanaDbPasswordKeyVaultUrl"],
                                                              hanaDetail["PasswordKeyVaultMsiClientId"])
                hanaDetail["HanaDbPassword"] = password
-               appTracer.debug("retrieved HANA password successfully from KeyVault")
+               self.appTracer.debug("retrieved HANA password successfully from KeyVault")
             except Exception as e:
-               appTracer.critical("could not fetch HANA password (instance=%s) from KeyVault (%s)" % (hanaDetails["HanaHostname"], e))
+               self.appTracer.critical("could not fetch HANA password (instance=%s) from KeyVault (%s)" % (hanaDetails["HanaHostname"], e))
                sys.exit(ERROR_GETTING_HANA_CREDENTIALS)
          # Only the last hanaDetail will take affect, but all the EnableCustomerAnalytics flags should be the same
          # as they are set by HANA RP. TODO: donaliu Refactor out common configs out of hanaDetails
@@ -112,10 +105,10 @@ class Context(object):
       try:
          laSecret = json.loads(secrets["AzureLogAnalytics"])
       except Exception as e:
-         appTracer.critical("could not fetch Log Analytics credentials (%s)" % e)
+         self.appTracer.critical("could not fetch Log Analytics credentials (%s)" % e)
          sys.exit(ERROR_GETTING_LOG_CREDENTIALS)
       self.azLa = AzureLogAnalytics(
-         appTracer,
+         self.appTracer,
          laSecret["LogAnalyticsWorkspaceId"],
          laSecret["LogAnalyticsSharedKey"]
          )
@@ -126,15 +119,15 @@ class Context(object):
    def ingestCustomerAnalytics(self,
                                customLog: str,
                                resultJson: str) -> None:
-      appTracer.info("sending customer analytics")
+      self.appTracer.info("sending customer analytics")
       results = json.loads(resultJson)
       for result in results:
          metrics = {
             "Type": customLog,
             "Data": result,
          }
-         appTracer.debug("metrics=%s" % metrics)
+         self.appTracer.debug("metrics=%s" % metrics)
          j = json.dumps(metrics)
-         analyticsTracer.info(j)
+         self.analyticsTracer.info(j)
 
       return
