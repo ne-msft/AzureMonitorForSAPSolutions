@@ -147,9 +147,9 @@ def monitor(args: str) -> None:
 # prepare will prepare the resources like keyvault, log analytics etc for the version passed as an argument
 # prepare needs to be run when a version upgrade requires specific update to the content of the resources
 def prepare(args: str) -> None:
-    appTracer.info("Preparing for ",args.toVersion)
+    appTracer.info("Preparing for %s" % args.toVersion)
     updateprofile = updateProfileFactory.createUpdateProfile(args.toVersion)
-    updateprofile.update(ctx,args.fromVersion)
+    updateprofile.update(ctx, args.fromVersion)
 
 
 # Ensures the required directory structure exists
