@@ -4,7 +4,7 @@
 #       (deployed on collector VM)
 #
 #       License:        GNU General Public License (GPL)
-#       (c) 2019        Microsoft Corp.
+#       (c) 2020        Microsoft Corp.
 #
 
 # Python modules
@@ -82,8 +82,9 @@ class Context(object):
 
       # Until we have multiple provider instances, just pick the first HANA config
       secrets = self.azKv.getCurrentSecrets()
-      hanaSecrets = sliceDict(secrets, )
-      hanaJson = list(hanaSecrets.values())[0]
+      hanaSecrets = sliceDict(secrets, HanaSecretName)
+      # Just picking the key <HanaSecretName> for now
+      hanaJson = hanaSecrets[HanaSecretName]
       hanaDetails = json.loads(hanaJson)
       for hanaDetail in hanaDetails:
          if not hanaDetail["HanaDbPassword"]:

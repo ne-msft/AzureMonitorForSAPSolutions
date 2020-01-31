@@ -42,6 +42,7 @@ class providerChecks(threading.Thread):
       self.provider = provider
 
    def run(self):
+      global ctx, appTracer
       for check in self.provider.checks:
          appTracer.info("starting check %s.%s" % (self.provider.name, check.name))
          # Skip this check if it's not enabled or not due yet
@@ -66,6 +67,7 @@ class providerChecks(threading.Thread):
 ###############################################################################
 
 def onboard(args: str) -> None:
+   global ctx, appTracer
    """
    Store credentials in the customer KeyVault
    (To be executed as custom script upon initial deployment of collector VM)
@@ -127,9 +129,9 @@ def onboard(args: str) -> None:
 
 # Execute the actual monitoring payload
 def monitor(args: str) -> None:
+   global ctx, appTracer
    appTracer.info("starting monitor payload")
-   secrets = ctx.azKv.getCurrentSecrets()
-   hanaSecrets = sliceDict(secrets, HanaSecretName)
+   ctx.parseSecrets()
    threads = []
 
    for secrets in ctx.providerSecrets:
@@ -148,10 +150,14 @@ def monitor(args: str) -> None:
 # prepare will prepare the resources like keyvault, log analytics etc for the version passed as an argument
 # prepare needs to be run when a version upgrade requires specific update to the content of the resources
 def prepare(args: str) -> None:
+    global ctx, appTracer
     appTracer.info("Preparing for %s" % args.toVersion)
-    updateProfileFactoryObj = updateProfileFactory()
-    updateprofile = updateProfileFactoryObj.createUpdateProfile(args.toVersion)
-    updateprofile.update(ctx, args.fromVersion)
+    try:
+       updateProfileFactoryObj = updateProfileFactory()
+       updateprofile = updateProfileFactoryObj.createUpdateProfile(args.toVersion)
+       updateprofile.update(ctx, args.fromVersion)
+    except Exception as e:
+        sys.stderr.write("Could not fulfill the update requirements for %s" % args.toVersion)
 
 
 # Ensures the required directory structure exists
@@ -272,5 +278,6 @@ def main() -> None:
    return
 
 ctx = None
+appTracer = None
 if __name__ == "__main__":
    main()

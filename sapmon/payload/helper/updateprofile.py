@@ -1,6 +1,11 @@
-# This script will configure the content of the keyvault according to the requirements of a specific version
-# of the monitor. For example to upgrade to a version v1.6 from v1.5 we will need to update the format of the secrets
-# stored in the keyvault as v1.6(first version with multi instance support) requires the secrets to be stored in a specific format.
+#!/usr/bin/env python3
+#
+#       Azure Monitor for SAP Solutions payload script
+#       (deployed on collector VM)
+#
+#       License:        GNU General Public License (GPL)
+#       (c) 2020        Microsoft Corp.
+#
 
 class updateProfile(object):
     updatefunc = None
