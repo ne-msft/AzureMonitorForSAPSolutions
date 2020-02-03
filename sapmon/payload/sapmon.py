@@ -266,7 +266,7 @@ def main() -> None:
                               type = str,
                               help = "Prepare resources for this version")
    prepareParser.add_argument("--fromVersion",
-                              required=True,
+                              required = True,
                               type = str,
                               help = "Pass the previous version (i.e. the currently running version)")
    prepareParser.set_defaults(func = prepareUpdate)
