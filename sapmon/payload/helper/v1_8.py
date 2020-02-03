@@ -13,7 +13,7 @@ class v1_8(updateProfile):
 
     def update(self, ctx: Context, previousVersion: str):
         secrets = ctx.azKv.getCurrentSecrets()
-        hanaSecrets = sliceDict(secrets, HanaSecretName)["SapHana-SYSTEMDB"]
+        hanaSecrets = sliceDict(secrets, HanaSecretName)["SapHana"]
         hanaSecretsJson = json.loads(hanaSecrets)
         # if previous version is v1_5 then the stored keyvault secret is a plain JSON containing credentials for a single instance
         # any version above v1.5 will require the stored secret to be of type [comma separated credentials in JSON format]
