@@ -159,7 +159,6 @@ def prepareUpdate(args: str) -> None:
     except Exception as e:
         sys.stderr.write("Could not fulfill the update requirements for %s" % args.toVersion)
 
-
 # Ensures the required directory structure exists
 def ensureDirectoryStructure() -> None:
    for path in [PATH_STATE, PATH_TRACE]:
