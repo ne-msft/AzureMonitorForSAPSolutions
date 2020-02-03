@@ -149,7 +149,7 @@ def monitor(args: str) -> None:
 
 # prepare will prepare the resources like keyvault, log analytics etc for the version passed as an argument
 # prepare needs to be run when a version upgrade requires specific update to the content of the resources
-def prepare(args: str) -> None:
+def prepareUpdate(args: str) -> None:
     global ctx, appTracer
     appTracer.info("Preparing for %s" % args.toVersion)
     try:
@@ -258,7 +258,7 @@ def main() -> None:
                           help = "Configurations to connect multiple HANA DBs in JSON format")
    onbParser.set_defaults(HanaDbConfigurationJson=None)
 
-   prepareParser = subParsers.add_parser("prepare",
+   prepareParser = subParsers.add_parser("prepareUpdate",
                                         description = "Prepares resources for the given version",
                                         help = "Run this before starting the next version")
    prepareParser.add_argument("--toVersion",
@@ -269,7 +269,7 @@ def main() -> None:
                               required=True,
                               type = str,
                               help = "Pass the previous version (i.e. the currently running version)")
-   prepareParser.set_defaults(func = prepare)
+   prepareParser.set_defaults(func = prepareUpdate)
    args = parser.parse_args()
    appTracer = tracing.initTracer(args)
    ctx = Context(appTracer, args.command)

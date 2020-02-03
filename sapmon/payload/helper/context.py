@@ -12,7 +12,6 @@ import re
 
 # Payload modules
 from helper.tracing import *
-
 from provider.saphana import *
 
 # Internal context handler
@@ -77,7 +76,6 @@ class Context(object):
    # TODO - make this content-specific
    def parseSecrets(self) -> None:
 
-
       self.appTracer.info("parsing secrets")
 
       # Until we have multiple provider instances, just pick the first HANA config
@@ -115,7 +113,6 @@ class Context(object):
          )
 
       return
-
 
    def ingestCustomerAnalytics(self,
                                customLog: str,
