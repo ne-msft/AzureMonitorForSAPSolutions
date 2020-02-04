@@ -21,6 +21,9 @@ from const import *
 from helper.azure import *
 from helper.tools import *
 from helper.tracing import *
+from helper.updateprofile import *
+from helper.context import *
+from helper.updatefactory import *
 
 from provider.saphana import *
 
@@ -31,123 +34,6 @@ sapmonContentTypes = {
    "HANA": "SapHanaCheck"
 }
 
-# Internal context handler
-class _Context(object):
-   azKv = None
-   hanaInstances = []
-   sapmonId = None
-   vmInstance = None
-   vmTage = None
-   enableCustomerAnalytics = None
-   providerSecrets = []
-
-   def __init__(self,
-                operation: str):
-      global appTracer, analyticsTracer
-      appTracer.info("initializing context")
-
-      # Retrieve sapmonId via IMDS
-      self.vmInstance = AzureInstanceMetadataService.getComputeInstance(appTracer,
-                                                                        operation)
-      self.vmTags = dict(
-         map(lambda s : s.split(':'),
-         self.vmInstance["tags"].split(";"))
-      )
-      appTracer.debug("vmTags=%s" % self.vmTags)
-      self.sapmonId = self.vmTags["SapMonId"]
-      appTracer.debug("sapmonId=%s " % self.sapmonId)
-
-      # Add storage queue log handler to appTracer
-      tracing.addQueueLogHandler(appTracer, self)
-
-      # Initializing appTracer for emitting metrics
-      analyticsTracer = tracing.initCustomerAnalyticsTracer(appTracer, self)
-
-      # Get KeyVault
-      self.azKv = AzureKeyVault(appTracer, KEYVAULT_NAMING_CONVENTION % self.sapmonId, self.vmTags.get("SapMonMsiClientId", None))
-      if not self.azKv.exists():
-         sys.exit(ERROR_KEYVAULT_NOT_FOUND)
-
-      appTracer.info("successfully initialized context")
-
-   # Fetch HANA password from a separate KeyVault
-   def fetchHanaPasswordFromKeyVault(self,
-                                     passwordKeyVault: str,
-                                     passwordKeyVaultMsiClientId: str) -> str:
-      global appTracer
-      appTracer.info("fetching HANA credentials from KeyVault")
-
-      # Extract KeyVault name from secret URL
-      vaultNameSearch = re.search("https://(.*).vault.azure.net", passwordKeyVault)
-      appTracer.debug("vaultNameSearch=%s" % vaultNameSearch.group(1))
-
-      # Create temporary KeyVault object to get relevant secret
-      kv = AzureKeyVault(appTracer, vaultNameSearch.group(1), passwordKeyVaultMsiClientId)
-      appTracer.debug("kv=%s" % kv)
-
-      return kv.getSecret(passwordKeyVault)
-
-   # Read secrets from customer KeyVault and store credentials in context
-   # TODO - make this content-specific
-   def parseSecrets(self) -> None:
-      # From a given dictionary, return only elements whose keys start with a given string
-      def sliceDict(d: dict, s: str) -> dict:
-         return {k: v for k, v in iter(d.items()) if k.startswith(s)}
-
-      global appTracer
-      appTracer.info("parsing secrets")
-
-      # Until we have multiple provider instances, just pick the first HANA config
-      secrets = self.azKv.getCurrentSecrets()
-      hanaSecrets = sliceDict(secrets, "SapHana")
-      hanaJson = list(hanaSecrets.values())[0]
-      hanaDetails = json.loads(hanaJson)
-      for hanaDetail in hanaDetails:
-         if not hanaDetail["HanaDbPassword"]:
-            appTracer.info("no HANA password provided; need to fetch password from separate KeyVault")
-            try:
-               password = self.fetchHanaPasswordFromKeyVault(hanaDetail["HanaDbPasswordKeyVaultUrl"],
-                                                             hanaDetail["PasswordKeyVaultMsiClientId"])
-               hanaDetail["HanaDbPassword"] = password
-               appTracer.debug("retrieved HANA password successfully from KeyVault")
-            except Exception as e:
-               appTracer.critical("could not fetch HANA password (instance=%s) from KeyVault (%s)" % (hanaDetails["HanaHostname"], e))
-               sys.exit(ERROR_GETTING_HANA_CREDENTIALS)
-         # Only the last hanaDetail will take affect, but all the EnableCustomerAnalytics flags should be the same
-         # as they are set by HANA RP. TODO: donaliu Refactor out common configs out of hanaDetails
-         ctx.enableCustomerAnalytics = hanaDetail["EnableCustomerAnalytics"]
-         self.providerSecrets.append(hanaDetail)
-
-      # Also extract Log Analytics credentials from secrets
-      try:
-         laSecret = json.loads(secrets["AzureLogAnalytics"])
-      except Exception as e:
-         appTracer.critical("could not fetch Log Analytics credentials (%s)" % e)
-         sys.exit(ERROR_GETTING_LOG_CREDENTIALS)
-      self.azLa = AzureLogAnalytics(
-         appTracer,
-         laSecret["LogAnalyticsWorkspaceId"],
-         laSecret["LogAnalyticsSharedKey"]
-         )
-
-      return
-
-   def ingestCustomerAnalytics(self,
-                               customLog: str,
-                               resultJson: str) -> None:
-      appTracer.info("sending customer analytics")
-      results = json.loads(resultJson)
-      for result in results:
-         metrics = {
-            "Type": customLog,
-            "Data": result,
-         }
-         appTracer.debug("metrics=%s" % metrics)
-         j = json.dumps(metrics)
-         analyticsTracer.info(j)
-
-      return
-
 ###############################################################################
 
 class providerChecks(threading.Thread):
@@ -156,6 +42,7 @@ class providerChecks(threading.Thread):
       self.provider = provider
 
    def run(self):
+      global ctx, appTracer
       for check in self.provider.checks:
          appTracer.info("starting check %s.%s" % (self.provider.name, check.name))
          # Skip this check if it's not enabled or not due yet
@@ -180,6 +67,7 @@ class providerChecks(threading.Thread):
 ###############################################################################
 
 def onboard(args: str) -> None:
+   global ctx, appTracer
    """
    Store credentials in the customer KeyVault
    (To be executed as custom script upon initial deployment of collector VM)
@@ -204,7 +92,7 @@ def onboard(args: str) -> None:
       hanaSecretValue = json.dumps(jsonObj)
    appTracer.info("storing HANA credentials as KeyVault secret")
    try:
-      ctx.azKv.setSecret("SapHana", hanaSecretValue)
+      ctx.azKv.setSecret(HanaSecretName, hanaSecretValue)
    except Exception as e:
       appTracer.critical("could not store HANA credentials in KeyVault secret (%s)" % e)
       sys.exit(ERROR_SETTING_KEYVAULT_SECRET)
@@ -241,13 +129,14 @@ def onboard(args: str) -> None:
 
 # Execute the actual monitoring payload
 def monitor(args: str) -> None:
+   global ctx, appTracer
    appTracer.info("starting monitor payload")
    ctx.parseSecrets()
    threads = []
 
    for secrets in ctx.providerSecrets:
       # There is only one type of provider right now, in the future, the provider name will be a part of the secret
-      provider = initProvider("SapHana", secrets)
+      provider = initProvider(HanaSecretName, secrets)
       providerThread = providerChecks(provider)
       providerThread.start()
       threads.append(providerThread)
@@ -257,6 +146,18 @@ def monitor(args: str) -> None:
 
    appTracer.info("monitor payload successfully completed")
    return
+
+# prepare will prepare the resources like keyvault, log analytics etc for the version passed as an argument
+# prepare needs to be run when a version upgrade requires specific update to the content of the resources
+def prepareUpdate(args: str) -> None:
+    global ctx, appTracer
+    appTracer.info("Preparing for %s" % args.toVersion)
+    try:
+       updateProfileFactoryObj = updateProfileFactory()
+       updateprofile = updateProfileFactoryObj.createUpdateProfile(args.toVersion)
+       updateprofile.update(ctx, args.fromVersion)
+    except Exception as e:
+        sys.stderr.write("Could not fulfill the update requirements for %s" % args.toVersion)
 
 # Ensures the required directory structure exists
 def ensureDirectoryStructure() -> None:
@@ -355,15 +256,27 @@ def main() -> None:
                           type = str,
                           help = "Configurations to connect multiple HANA DBs in JSON format")
    onbParser.set_defaults(HanaDbConfigurationJson=None)
+
+   prepareParser = subParsers.add_parser("prepareUpdate",
+                                        description = "Prepares resources for the given version",
+                                        help = "Run this before starting the next version")
+   prepareParser.add_argument("--toVersion",
+                              required = True,
+                              type = str,
+                              help = "Prepare resources for this version")
+   prepareParser.add_argument("--fromVersion",
+                              required = True,
+                              type = str,
+                              help = "Pass the previous version (i.e. the currently running version)")
+   prepareParser.set_defaults(func = prepareUpdate)
    args = parser.parse_args()
    appTracer = tracing.initTracer(args)
-   ctx = _Context(args.command)
+   ctx = Context(appTracer, args.command)
    args.func(args)
 
    return
 
-appTracer = None
-analyticsTracer = None
 ctx = None
+appTracer = None
 if __name__ == "__main__":
    main()

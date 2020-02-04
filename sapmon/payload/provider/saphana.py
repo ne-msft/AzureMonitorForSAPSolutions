@@ -13,6 +13,7 @@ from typing import Dict, List
 # SAP HANA modules
 from hdbcli import dbapi
 
+HanaSecretName = "SapHana"
 # Stores configuration specific to a SAP HANA database instance
 class SapHanaProvider(SapmonContentProvider):
    def __init__(self,

@@ -84,3 +84,7 @@ class Singleton(type):
       if cls not in cls._instances:
          cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
       return cls._instances[cls]
+
+# From a given dictionary, return only elements whose keys start with a given string
+def sliceDict(d: dict, s: str) -> dict:
+   return {k: v for k, v in iter(d.items()) if k.startswith(s)}
