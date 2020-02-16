@@ -77,14 +77,14 @@ def onboard(args: str) -> None:
    if args.HanaDbConfigurationJson is None:
       # Store provided credentials as a KeyVault secret
       hanaSecretValue = json.dumps([{
-         "HanaHostname":                args.HanaHostname,
-         "HanaDbName":                  args.HanaDbName,
-         "HanaDbUsername":              args.HanaDbUsername,
-         "HanaDbPassword":              args.HanaDbPassword,
-         "HanaDbPasswordKeyVaultUrl":   args.HanaDbPasswordKeyVaultUrl,
-         "HanaDbSqlPort":               args.HanaDbSqlPort,
-         "PasswordKeyVaultMsiClientId": args.PasswordKeyVaultMsiClientId,
-         "EnableCustomerAnalytics":     args.EnableCustomerAnalytics,
+         "HanaHostname":                args.hanaHostname,
+         "HanaDbName":                  args.hanaDbName,
+         "HanaDbUsername":              args.hanaDbUsername,
+         "HanaDbPassword":              args.hanaDbPassword,
+         "HanaDbPasswordKeyVaultUrl":   args.hanaDbPasswordKeyVaultUrl,
+         "HanaDbSqlPort":               args.hanaDbSqlPort,
+         "PasswordKeyVaultMsiClientId": args.passwordKeyVaultMsiClientId,
+         "EnableCustomerAnalytics":     args.enableCustomerAnalytics,
          }])
    else:
       # validate it is actual JSON
@@ -101,8 +101,8 @@ def onboard(args: str) -> None:
    laSecretName = "AzureLogAnalytics"
    appTracer.debug("laSecretName=%s" % laSecretName)
    laSecretValue = json.dumps({
-      "LogAnalyticsWorkspaceId": args.LogAnalyticsWorkspaceId,
-      "LogAnalyticsSharedKey":   args.LogAnalyticsSharedKey,
+      "LogAnalyticsWorkspaceId": args.logAnalyticsWorkspaceId,
+      "LogAnalyticsSharedKey":   args.logAnalyticsSharedKey,
       })
    appTracer.info("storing Log Analytics credentials as KeyVault secret")
    try:
@@ -183,8 +183,25 @@ def initProvider(providerName:str, secrets):
    appTracer.info("successfully loaded content provider %s" % providerName)
    return contentProvider
 
+def addProvider(args: str) -> None:
+   print("ADD")
+   print(args)
+   sys.exit()
+
+def deleteProvider(args: str) -> None:
+   print("DELETE")
+   print(args)
+   sys.exit()
+
 # Main function with argument parser
 def main() -> None:
+   def addVerboseToParser(p: argparse.ArgumentParser) -> None:
+      p.add_argument("--verbose",
+                     action = "store_true",
+                     dest = "verbose",
+                     help = "run in verbose mode")
+      return
+
    global ctx, appTracer
 
    # Make sure we have all directories in place
@@ -192,83 +209,94 @@ def main() -> None:
 
    # Build the argument parser
    parser = argparse.ArgumentParser(description = "SAP Monitor Payload")
-   parser.add_argument("--verbose",
-                       action = "store_true",
-                       dest = "verbose",
-                       help = "run in verbose mode") 
    subParsers = parser.add_subparsers(title = "actions",
                                       help = "Select action to run")
    subParsers.required = True
    subParsers.dest = "command"
+
+   # Parsers for "provider" command
+   prvParser = subParsers.add_parser("provider",
+                                      description = "Configuration of monitoring providers",
+                                      help = "Configure monitoring providers and their properties")
+   prvSubParsers = prvParser.add_subparsers(title = "action",
+                                            help = "Select provider action to run")
+   prvSubParsers.required = True
+   prvSubParsers.dest = "command"
+   prvAddParser = prvSubParsers.add_parser("add",
+                                           description = "Add a provider",
+                                           help = "Add a new monitoring provider to this SAP Monitor")
+   prvAddParser.add_argument("--name",
+                             required = True,
+                             type = str,
+                             help = "Name of the monitoring provider")
+   prvAddParser.add_argument("--type",
+                             required = True,
+                             type = str,
+                             help = "Type of the monitoring provider")
+   prvAddParser.add_argument("--properties",
+                             required = True,
+                             type = str,
+                             help = "Properties of the monitoring provider")
+   addVerboseToParser(prvAddParser)
+   prvAddParser.set_defaults(func = addProvider)
+   prvDelParser = prvSubParsers.add_parser("delete",
+                                           description = "Delete a provider",
+                                           help = "Delete an existing monitoring provider from this SAP Monitor")
+   prvDelParser.add_argument("--name",
+                             required = True,
+                             type = str,
+                             help = "Name of the monitoring provider")
+   addVerboseToParser(prvDelParser)
+   prvDelParser.set_defaults(func = deleteProvider)
+
+   # Parsers for "monitor" command
    monParser = subParsers.add_parser("monitor",
                                       description = "Monitoring payload",
                                       help = "Execute the monitoring payload")
-   monParser.set_defaults(func=monitor)
+   addVerboseToParser(monParser)
+   monParser.set_defaults(func = monitor)
+
+   # Parsers for "onboard" command
    onbParser = subParsers.add_parser("onboard",
                                      description = "Onboard payload",
                                      help = "Onboard payload by adding credentials into KeyVault")
    onbParser.set_defaults(func = onboard,
                           command = "onboard")
-   onbParser.add_argument("--HanaHostname",
-                          required = False,
-                          type = str,
-                          help = "Hostname of the HDB to be monitored")
-   onbParser.add_argument("--HanaDbName",
-                          required = False,
-                          type = str,
-                          help = "Name of the tenant DB (empty if not MDC)")
-   onbParser.add_argument("--HanaDbUsername",
-                          required = False,
-                          type = str,
-                          help = "DB username to connect to the HDB tenant")
-   onbParser.add_argument("--HanaDbPassword",
-                          required = False,
-                          type = str,
-                          help = "DB user password to connect to the HDB tenant")
-   onbParser.add_argument("--HanaDbPasswordKeyVaultUrl",
-                          required = False,
-                          type = str,
-                          help = "URL of KeyVault secret containing HDB password")
-   onbParser.add_argument("--HanaDbSqlPort",
-                          required = False,
-                          type = int,
-                          help = "SQL port of the tenant DB")
-   onbParser.add_argument("--LogAnalyticsWorkspaceId",
+   onbParser.add_argument("--logAnalyticsWorkspaceId",
                           required = True,
                           type = str,
                           help = "Workspace ID (customer ID) of the Log Analytics Workspace")
-   onbParser.add_argument("--LogAnalyticsSharedKey",
+   onbParser.add_argument("--logAnalyticsSharedKey",
                           required = True,
                           type = str,
                           help = "Shared key (primary) of the Log Analytics Workspace")
-   onbParser.add_argument("--PasswordKeyVaultMsiClientId",
-                          required = False,
+   onbParser.add_argument("--providers",
+                          required = True,
                           type = str,
-                          help = "MSI Client ID used to get the access token from IMDS")
-   onbParser.add_argument("--EnableCustomerAnalytics",
+                          help = "JSON-formatted list of all provider properties")
+   onbParser.add_argument("--enableCustomerAnalytics",
                           required = False,
                           help = "Setting to enable sending metrics to Microsoft",
                           action="store_true",
-                          dest="EnableCustomerAnalytics")
-   onbParser.set_defaults(EnableCustomerAnalytics=False)
-   onbParser.add_argument("--HanaDbConfigurationJson",
-                          required = False,
-                          type = str,
-                          help = "Configurations to connect multiple HANA DBs in JSON format")
-   onbParser.set_defaults(HanaDbConfigurationJson=None)
+                          dest="enableCustomerAnalytics")
+   addVerboseToParser(onbParser)
+   onbParser.set_defaults(enableCustomerAnalytics=False)
 
-   prepareParser = subParsers.add_parser("prepareUpdate",
-                                        description = "Prepares resources for the given version",
-                                        help = "Run this before starting the next version")
-   prepareParser.add_argument("--toVersion",
-                              required = True,
-                              type = str,
-                              help = "Prepare resources for this version")
-   prepareParser.add_argument("--fromVersion",
-                              required = True,
-                              type = str,
-                              help = "Pass the previous version (i.e. the currently running version)")
-   prepareParser.set_defaults(func = prepareUpdate)
+   # Parsers for "update" command
+   updParser = subParsers.add_parser("update",
+                                     description = "Prepares resources for the given version",
+                                     help = "Run this before starting the next version")
+   updParser.add_argument("--toVersion",
+                           required = True,
+                           type = str,
+                           help = "Prepare resources for this target version")
+   updParser.add_argument("--fromVersion",
+                           required = True,
+                           type = str,
+                           help = "Pass the previous version (i.e. the currently running version)")
+   addVerboseToParser(updParser)
+   updParser.set_defaults(func = prepareUpdate)
+
    args = parser.parse_args()
    appTracer = tracing.initTracer(args)
    ctx = Context(appTracer, args.command)
@@ -280,3 +308,4 @@ ctx = None
 appTracer = None
 if __name__ == "__main__":
    main()
+
