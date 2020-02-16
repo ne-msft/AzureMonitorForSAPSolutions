@@ -19,10 +19,11 @@ import threading
 # Payload modules
 from const import *
 from helper.azure import *
+from helper.config import *
+from helper.context import *
 from helper.tools import *
 from helper.tracing import *
 from helper.updateprofile import *
-from helper.context import *
 from helper.updatefactory import *
 
 from provider.saphana import *
@@ -66,12 +67,15 @@ class providerChecks(threading.Thread):
 
 ###############################################################################
 
+
+
+
+
+
+# Store credentials in the customer KeyVault
+# (To be executed as custom script upon initial deployment of collector VM)
 def onboard(args: str) -> None:
    global ctx, appTracer
-   """
-   Store credentials in the customer KeyVault
-   (To be executed as custom script upon initial deployment of collector VM)
-   """
    appTracer.info("starting onboarding payload")
 
    if args.HanaDbConfigurationJson is None:
@@ -127,6 +131,22 @@ def onboard(args: str) -> None:
    appTracer.info("onboarding payload successfully completed")
    return
 
+
+
+
+def addProvider(args: str) -> None:
+   print("ADD")
+   print(args)
+   global ctx, appTracer
+   appTracer.info("adding provider %s" % args.name)
+   Config.loadConfig(appTracer, ctx)
+   sys.exit()
+
+
+
+
+
+
 # Execute the actual monitoring payload
 def monitor(args: str) -> None:
    global ctx, appTracer
@@ -147,8 +167,8 @@ def monitor(args: str) -> None:
    appTracer.info("monitor payload successfully completed")
    return
 
-# prepare will prepare the resources like keyvault, log analytics etc for the version passed as an argument
-# prepare needs to be run when a version upgrade requires specific update to the content of the resources
+# prepareUpdate will prepare the resources like keyvault, log analytics etc for the version passed as an argument
+# prepareUpdate needs to be run when a version upgrade requires specific update to the content of the resources
 def prepareUpdate(args: str) -> None:
     global ctx, appTracer
     appTracer.info("Preparing for %s" % args.toVersion)
@@ -182,11 +202,6 @@ def initProvider(providerName:str, secrets):
 
    appTracer.info("successfully loaded content provider %s" % providerName)
    return contentProvider
-
-def addProvider(args: str) -> None:
-   print("ADD")
-   print(args)
-   sys.exit()
 
 def deleteProvider(args: str) -> None:
    print("DELETE")
