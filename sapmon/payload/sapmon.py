@@ -19,7 +19,7 @@ import threading
 # Payload modules
 from const import *
 from helper.azure import *
-from helper.config import *
+from helper.config import ConfigHandler
 from helper.context import *
 from helper.tools import *
 from helper.tracing import *
@@ -29,6 +29,9 @@ from helper.updatefactory import *
 from provider.saphana import *
 
 ###############################################################################
+
+# TODO(tniek) - Refactor this so each provider gets added automatically
+availableProviders["saphana"] = SapHanaProvider
 
 # TODO - refactor the list of content types into provider
 sapmonContentTypes = {
@@ -136,10 +139,18 @@ def onboard(args: str) -> None:
 
 def addProvider(args: str) -> None:
    print("ADD")
-   print(args)
    global ctx, appTracer
    appTracer.info("adding provider %s" % args.name)
-   Config.loadConfig(appTracer, ctx)
+   #ConfigHandler.loadConfig(appTracer, ctx)
+   instance = {"name": args.name,
+               "type": args.type,
+               "properties": args.properties}
+   if not ConfigHandler.saveInstanceToConfig(appTracer,
+                                             ctx,
+                                             instance):
+      appTracer.critical("adding provider failed")
+   else:
+      appTracer.info("adding provider successful")
    sys.exit()
 
 

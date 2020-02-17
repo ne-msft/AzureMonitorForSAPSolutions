@@ -4,29 +4,99 @@
 # Python modules
 import json
 import logging
+import sys
 
 # Payload modules
 from const import *
-from helper.Azure import AzureKeyVault
+from helper.azure import AzureKeyVault
 from helper.tools import *
 from helper.context import Context
+from typing import Callable, Dict, List
 
 ###############################################################################
 
 # Provide access to configuration (stored in customer KeyVault)
 class ConfigHandler:
-   globalPrefix = "Global"
+   sectionGlobal = "global"
 
    # Load configuration (global and providers) from customer KeyVault
-	@staticmethod
-	def loadConfig(tracer: logging.Logger,
-		            ctx: Context)
-      self.tracer.info("loading config from KeyVault")
+   @staticmethod
+   def loadConfig(tracer: logging.Logger,
+                  ctx: Context) -> (Dict[str, str], List[Dict[str, str]]):
+      tracer.info("loading config from KeyVault")
+
+      globalParams = {}
+      instances = []
 
       secrets = ctx.azKv.getCurrentSecrets()
-      self.tracer.error("secrets = " % secrets)
-      sys.exit()
+      for secretName in secrets.keys():
+         tracer.debug("parsing secret %s" % secretName)
+         secretValue = secrets[secretName]
+         try:
+            instanceProperties = json.loads(secretValue)
+         except json.decoder.JSONDecodeError as e:
+            tracer.error("invalid JSON format for secret %s=%s (%s)" % (secretName, secretValue, e))
+            continue
+         if secretName == ConfigHandler.sectionGlobal:
+            globalParams = instanceProperties
+         else:
+            parts = secretName.split("-")
+            if len(parts) != 2:
+               tracer.error("invalid secret name (should be provider-name): %s" % (secretName))
+               continue
+            providerType, instanceName = parts[0], parts[1]
+            if not providerType in ctx.availableProviders:
+               tracer.error("unknown provider type %s (available types: %s)" % (providerType, list(ctx.availableProviders.keys())))
+               continue
+            provider = ctx.availableProviders[providerType]
+            instance = {"type": providerType,
+                        "name": instanceName,
+                        "properties": instanceProperties}
+            instances.append(instance)
+            
+      print("globalParams = %s" % globalParams)
+      print("instances = %s" % instances)
+      return (globalParams, instances)
 
+   # Save global parameters to customer KeyVault
+   @staticmethod
+   def saveGlobalConfig(tracer: logging.Logger,
+                        ctx: Context) -> bool:
+      tracer.info("saving global parameters to customer KeyVault")
+      return ctx.azKv.setSecret(ConfigHandler.sectionGlobal,
+                                ctx.globalParams)
+
+   # Save specific instance properties to customer KeyVault
+   @staticmethod
+   def saveInstanceToConfig(tracer: logging.Logger,
+                            ctx: Context,
+                            instance: Dict) -> bool:
+      if ("name" not in instance) or \
+         ("type" not in instance) or \
+         ("properties" not in instance):
+         tracer.error("instance to save is missing name, type or properties")
+         return False
+      instanceName = instance["name"]
+      tracer.info("saving instance %s to customer KeyVault" % instanceName)
+      providerType = instance["type"]
+      if not providerType in ctx.availableProviders:
+         tracer.error("unknown provider type %s (available types: %s)" % (providerType, list(ctx.availableProviders.keys())))
+         return False
+      instanceProperties = instance["properties"]
+      try:
+         secretValue = json.dumps(instanceProperties)
+      except json.decoder.JSONEncodeError as e:
+         tracer.error("cannot JSON encode instance properties (%s)" % e)
+         return False   
+      secretName = "%s-%s" % (providerType, instanceName)
+      return ctx.azKv.setSecret(secretName,
+                                secretValue)
+
+   # Load configuration (global and providers) from customer KeyVault
+   @staticmethod
+   def loadConfigX(tracer: logging.Logger,
+                  ctx: Context) -> (Dict[str, str], List[Dict[str, str]]):      
+      return
       hanaSecrets = sliceDict(secrets, HanaSecretName)
       # Just picking the key <HanaSecretName> for now
       hanaJson = hanaSecrets[HanaSecretName]

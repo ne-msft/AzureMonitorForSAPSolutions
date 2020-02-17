@@ -31,6 +31,8 @@ class Context(object):
       self.appTracer = tracer
       self.appTracer.info("initializing context")
 
+      self.availableProviders = availableProviders
+
       # Retrieve sapmonId via IMDS
       self.vmInstance = AzureInstanceMetadataService.getComputeInstance(self.appTracer,
                                                                         operation)
