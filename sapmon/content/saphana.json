@@ -1,7 +1,5 @@
 {  
-    "providerName": "SapHana",
-    "contentVersion": "0.3.1",
-    "checkType": "SapHanaCheck",
+    "contentVersion": "0.4.0",
     "checks": [  
         {  
             "name": "HostConfig",

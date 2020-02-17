@@ -11,45 +11,101 @@ from helper.tools import *
 
 ###############################################################################
 
-# Base class for all SAP Monitor content providers
-class SapmonContentProvider:
+# Base class for an instance of a monitoring provider
+class ProviderInstance(ABC):
    tracer = None
    name = None
-   version = None
+   providerType = None
+   providerProperties = {}
+   fullName = None
+   contentVersion = None
    checks = []
    state = {}
-   secrets = {}
-   stateFileSuffix = None
-
+   
    def __init__(self,
                 tracer: logging.Logger,
-                contentFullPath: str,
-                stateFileSuffix: str):
-      self.stateFileSuffix = stateFileSuffix
+                name: str,
+                providerProperties: Dict[str, str]):
+      # This constructor gets called after the child class
+      self.tracer = tracer
+      self.name = name
+      self.providerProperties = providerProperties
+      if not self.parseProperties():
+         return None
+      self.fullName = "%s-%s" % (self.providerType, self.name)
+      if not self.initContent():
+         return None
       self.readState()
 
-   # Read most recent, provider-specific state from state file
-   def readState(self) -> bool:
-      self.tracer.info("reading state file for content provider %s" % self.name)
-      jsonData = {}
+   # Read provider content file
+   def initContent(self) -> bool:
+      self.tracer.info("[%s] initializing content for provider instance" % self.fullName)
 
-      # Parse JSON for all check states of this provider
       try:
-         filename = os.path.join(PATH_STATE, "%s-%s.state" % (self.name, self.stateFileSuffix))
+         filename = os.path.join(PATH_CONTENT, "%s.json" % self.providerType)
          self.tracer.debug("filename=%s" % filename)
          with open(filename, "r") as file:
             data = file.read()
          jsonData = json.loads(data, object_hook=JsonDecoder.datetimeHook)
       except FileNotFoundError as e:
-         self.tracer.warning("state file %s does not exist" % filename)
+         self.tracer.warning("[%s] content file %s does not exist" % (self.fullName,
+                                                                      filename))
          return False
       except Exception as e:
-         self.tracer.error("could not read state file %s (%s)" % (filename, e))
+         self.tracer.error("[%s] could not read content file %s (%s)" % (self.fullName,
+                                                                         filename,
+                                                                         e))
+         return False
+
+      self.contentVersion = jsonData.get("contentVersion", None)
+      if not self.contentVersion:
+         self.tracer.error("[%s] contentVersion not specified in content file %s" % (self.fullName,
+                                                                                     filename))
+         return False
+
+      # Parse and instantiate the individual checks of the provider
+      checks = jsonData.get("checks", [])
+      for checkOptions in checks:
+         try:
+            checkType = "%sCheck" % self.providerType
+            self.tracer.info("[%s] instantiating check of type %s" % (self.fullName,
+                                                                      checkType))
+            self.tracer.debug("[%s] checkOptions=%s" % (self.fullName,
+                                                        checkOptions))
+            check = eval(checkType)(self, **checkOptions)
+            self.checks.append(check)
+         except Exception as e:
+            self.tracer.error("[%s] could not instantiate check of type %s (%s)" % (self.fullName,
+                                                                                    checkType,
+                                                                                    e))
+      return True
+
+   # Read most recent, provider-specific state from state file
+   def readState(self) -> bool:
+      self.tracer.info("[%s] reading state file for provider instance" % self.fullName)
+      jsonData = {}
+
+      # Parse JSON for all check states of this provider
+      try:
+         filename = os.path.join(PATH_STATE, "%s.state" % self.fullName)
+         self.tracer.debug("[%s] filename=%s" % (self.fullName,
+                                                 filename))
+         with open(filename, "r") as file:
+            data = file.read()
+         jsonData = json.loads(data, object_hook=JsonDecoder.datetimeHook)
+      except FileNotFoundError as e:
+         self.tracer.warning("[%s] state file %s does not exist" % (self.fullName,
+                                                                    filename))
+         return False
+      except Exception as e:
+         self.tracer.error("[%s] could not read state file %s (%s)" % (self.fullName,
+                                                                       filename,
+                                                                       e))
          return False
 
       # Update global state for this provider
       self.state = jsonData.get("global", {})
-      self.tracer.debug("global state for content provider %s=%s" % (self.name, str(self.state)))
+      self.tracer.debug("[%s] global state=%s" % (self.fullName, str(self.state)))
 
       # Update state for each individual check of this provider
       checkStates = jsonData.get("checks", {})
@@ -60,13 +116,13 @@ class SapmonContentProvider:
          check.state = checkStates.get(check.name, {})
          if saveIsEnabled is not None:
             check.state["isEnabled"] = saveIsEnabled
-         self.tracer.debug("state for check %s=%s" % (check.name, str(check.state)))
-      self.tracer.info("successfully read state file for content provider %s" % self.name)
+         self.tracer.debug("[%s] check state=%s" % (check.fullName, str(check.state)))
+      self.tracer.info("[%s] successfully read state file for provider instance" % self.fullName)
       return True
-      
+
    # Write current state for this provider and its checks into state file
    def writeState(self) -> bool:
-      self.tracer.info("writing state file for content provider %s" % self.name)
+      self.tracer.info("[%s] writing state file for provider instance" % self.fullName)
 
       # Initialize JSON object with global state
       jsonData = {
@@ -81,39 +137,53 @@ class SapmonContentProvider:
 
       # Write JSON object into state file
       try:
-         filename = os.path.join(PATH_STATE, "%s-%s.state" % (self.name, self.stateFileSuffix))
-         self.tracer.debug("filename=%s" % filename)
+         filename = os.path.join(PATH_STATE, "%s.state" % self.fullName)
+         self.tracer.debug("[%s] filename=%s" % (self.fullName,
+                                                 filename))
          with open(filename, "w") as file:
             json.dump(jsonData, file, indent=3, cls=JsonEncoder)
       except Exception as e:
-         self.tracer.error("could not write state file %s (%s)" % (filename, e))
+         self.tracer.error("[%s] could not write state file %s (%s)" % (self.fullName,
+                                                                        filename,
+                                                                        e))
          return False
 
-      self.tracer.info("successfully wrote state file for content provider %s" % self.name)
+      self.tracer.info("[%s] successfully wrote state file for provider instance" % self.fullName)
       return True
+
+   # Provider-specific validation logic (e.g. establish HANA connection)
+   @abstractmethod
+   def validate(self) -> bool:
+      pass
+
+   # Provider-specific additional parsing logic (e.g. extract password from KeyVault)
+   @abstractmethod
+   def parseProperties(self) -> bool:
+      pass
 
 ###############################################################################
 
-# Base class for all SAP Monitor checks
-class SapmonCheck(ABC):
-   provider = None
+# Base class for a check as part of a monitoring provider
+class ProviderCheck(ABC):
+   providerInstance = None
    name = None
    description = None
    customLog = None
    frequencySecs = None
    actions = []
    state = {}
+   fullName = None
+   tracer = None
 
    def __init__(self,
-                provider: SapmonContentProvider,
+                providerInstance: ProviderInstance,
                 name: str,
                 description: str,
                 customLog: str,
                 frequencySecs: int,
                 actions: List[str],
                 enabled: bool = True):
-      self.provider = provider
-      self.tracer = provider.tracer
+      self.providerInstance = providerInstance
       self.name = name
       self.description = description
       self.customLog = customLog
@@ -123,12 +193,14 @@ class SapmonCheck(ABC):
          "isEnabled": enabled,
          "lastRunLocal": None
       }
+      self.fullName = "%s.%s" % (self.providerInstance.fullName, self.name)
+      self.tracer = provider.tracer
 
    # Return if this check is enabled or not
    def isEnabled(self) -> bool:
-      self.tracer.info("verifying if check %s.%s is enabled" % (self.provider.name, self.name))
+      self.tracer.info("[%s] verifying if check enabled" % self.fullName)
       if not self.state["isEnabled"]:
-         self.tracer.info("check %s.%s is currently not enabled, skipping" % (self.provider.name, self.name))
+         self.tracer.info("[%s] check is currently not enabled, skipping" % self.fullName)
          return False
       return True
 
@@ -136,37 +208,70 @@ class SapmonCheck(ABC):
    def isDue(self) -> bool:
       # lastRunLocal = last execution time on collector VM
       # lastRunServer (used in provider) = last execution time on (HANA) server
-      self.tracer.info("verifying if check %s.%s is due to be run" % (self.provider.name, self.name))
+      self.tracer.info("[%s] verifying if check is due to be run" % self.fullName)
       lastRunLocal = self.state["lastRunLocal"]
-      self.tracer.debug("lastRunLocal=%s; frequencySecs=%d; currentLocal=%s" % \
-         (lastRunLocal, self.frequencySecs, datetime.utcnow()))
+      self.tracer.debug("[%s] lastRunLocal=%s; frequencySecs=%d; currentLocal=%s" % (self.fullName,
+                                                                                     lastRunLocal,
+                                                                                     self.frequencySecs,
+                                                                                     datetime.utcnow()))
       if lastRunLocal and \
          lastRunLocal + timedelta(seconds = self.frequencySecs) > datetime.utcnow():
-         self.tracer.info("check %s.%s is not due yet, skipping" % (self.provider.name, self.name))
+         self.tracer.info("[%s] check is not due yet, skipping" % self.fullNname)
          return False
       return True
 
    # Method that gets called when this check is executed
    # Returns a JSON-formatted string that can be ingested into Log Analytics
    def run(self) -> str:
-      self.tracer.info("executing all actions of check %s.%s" % (self.provider.name, self.name))
-      self.tracer.debug("actions=%s" % self.actions)
+      self.tracer.info("[%s] executing all actions of check" % self.fullName)
+      self.tracer.debug("[%s] actions=%s" % (self.fullName,
+                                             self.actions))
       for action in self.actions:
-         methodName = action["type"]
+         methodName = "__%s" % action["type"]
          parameters = action.get("parameters", {})
-         self.tracer.debug("calling action %s" % methodName)
+         self.tracer.debug("[%s] calling action %s" % (self.fullName,
+                                                       methodName))
          method = getattr(self, methodName)
          if method(**parameters) == False:
-            self.tracer.info("error while executing check %s.%s (action %s), skipping remaining actions" % (self.provider.name, self.name, methodName))
-      return self._generateJsonString()
+            self.tracer.info("[%s] error executing action %s, skipping remaining actions" % (self.fullName,
+                                                                                             methodName))
+      return self.generateJsonString()
+
+   # Generate a JSON-encoded string with the last query result
+   # This string will be ingested into Log Analytics and Customer Analytics
+   def generateJsonString(self) -> str:
+      self.tracer.info("[%s] converting SQL query result set into JSON format" % self.fullName)
+      logData = []
+      
+      # Only loop through the result if there is one
+      if self.lastResult:
+         (colIndex, resultRows) = self.lastResult
+         # Iterate through all rows of the last query result
+         for r in resultRows:
+            logItem = {
+               "CONTENT_VERSION": self.providerInstance.version,
+               "SAPMON_VERSION": PAYLOAD_VERSION,
+               "PROVIDER_INSTANCE": self.providerInstance.name,
+            }
+            for c in colIndex.keys():
+               # Unless it's the column mapped to TimeGenerated, remove internal fields
+               if c != self.colTimeGenerated and (c.startswith("_") or c == "DUMMY"):
+                  continue
+               logItem[c] = r[colIndex[c]]
+            logData.append(logItem)
+
+      # Convert temporary dictionary into JSON string
+      try:
+         resultJsonString = json.dumps(logData, sort_keys=True, indent=4, cls=JsonEncoder)
+         self.tracer.debug("[%s] resultJson=%s" % (self.fullName,
+                                                   str(resultJsonString)))
+      except Exception as e:
+         self.tracer.error("[%s] could not format logItem=%s into JSON (%s)" % (self.fullName,
+                                                                                logItem,
+                                                                                e))
+      return resultJsonString
 
    # Method that gets called when the internal state is updated
    @abstractmethod
    def _updateState(self):
-      pass
-
-   # Method to generate a JSON-encoded string containing the result
-   # (This string will be ingested into Log Analytics and Customer Analytics)
-   @abstractmethod
-   def _generateJsonString(self) -> str:
       pass

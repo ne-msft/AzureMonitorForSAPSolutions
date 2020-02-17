@@ -13,78 +13,75 @@ from typing import Dict, List
 # SAP HANA modules
 from hdbcli import dbapi
 
-HanaSecretName = "SapHana"
-# Stores configuration specific to a SAP HANA database instance
-class SapHanaProvider(SapmonContentProvider):
+###############################################################################
+
+# HANA-specific constants
+TIMEOUT_HANA_SECS  = 5
+COL_LOCAL_UTC      = "_LOCAL_UTC"
+COL_SERVER_UTC     = "_SERVER_UTC"
+COL_TIMESERIES_UTC = "_TIMESERIES_UTC"
+
+###############################################################################
+
+class saphanaProviderInstance(ProviderInstance):
+   hanaHostname = None
+   hanaDbSqlPort = None
+   hanaDbUsername = None
+   hanaDbPassword = None
+
    def __init__(self,
-                tracer,
-                contentFullPath,
-                secrets,
+                tracer: logging.Logger,
+                name: str,
+                providerProperties: Dict[str, str],
                 **kwargs):
-      self.tracer = tracer
-      self.secrets = secrets
-      stateFileSuffix = self.secrets["HanaHostname"]
-      if not self.initContent(contentFullPath):
-         return None
-      super().__init__(tracer, contentFullPath, stateFileSuffix, **kwargs)
+      # Sets the provider type based on the script filename
+      self.providerType = __file__.split(".py")[0]
+      return super().__init__(tracer,
+                              name,
+                              providerProperties,
+                              **kwargs)
 
-   # Read content from provider definition
-   # TODO(tniek): Refactor this into the generic provider class
-   def initContent(self, filename: str) -> bool:
-      try:
-         with open(filename, "r") as file:
-            data = file.read()
-         jsonData = json.loads(data)
-      except Exception as e:
-         self.tracer.error("could not load content file %s (%s)" % (filename, e))
+   # Parse provider properties and fetch DB password from KeyVault, if necessary
+   def parseProperties(self):
+      self.hanaHostname = self.providerProperties.get("HanaHostname", None)
+      if not self.hanaHostname:
+         self.tracer.error("[%s] HanaHostname cannot be empty" % self.fullName)
          return False
-
-      # Validate required fields
-      self.name = jsonData.get("providerName", None)
-      if not self.name:
-         self.tracer.error("provider name not specified in content file %s" % filename)
+      self.hanaDbSqlPort = self.providerProperties.get("HanaDbSqlPort", None)
+      if not self.hanaDbSqlPort:
+         self.tracer.error("[%s] HanaDbSqlPort cannot be empty" % self.fullName)
          return False
-      self.version = jsonData.get("contentVersion", None)
-      if not self.version:
-         self.tracer.error("content version not specified in content file %s" % filename)
+      self.hanaDbUsername = self.providerProperties.get("HanaDbUsername", None)
+      if not self.hanaDbUsername:
+         self.tracer.error("[%s] HanaDbUsername cannot be empty" % self.fullName)
          return False
-      self.checkType = jsonData.get("checkType", None)
-      if not self.checkType:
-         self.tracer.error("check type not specified in content file %s" % filename)
-         return False
-
-      # Parse and instantiate the individual checks of the provider
-      checks = jsonData.get("checks", [])
-      for checkOptions in checks:
-         try:
-            self.tracer.info("instantiate check of type %s" % self.checkType)
-            self.tracer.debug("checkOptions=%s" % checkOptions)
-            check = eval(self.checkType)(self, self.secrets, **checkOptions)
-            self.checks.append(check)
-         except Exception as e:
-            self.tracer.error("could not instantiate new check of type %s (%s)" % (self.checkType, e))
+      self.hanaDbPassword = self.providerProperties.get("HanaDbPassword", None)
+      if not self.hanaDbPassword:
+         hanaDbPasswordKeyVaultUrl = self.providerProperties.get("HanaDbPasswordKeyVaultUrl", None)
+         passwordKeyVaultMsiClientId = self.providerProperties.get("PasswordKeyVaultMsiClientId", None)
+         if not hanaDbPasswordKeyVaultUrl or not passwordKeyVaultMsiClientId:
+            self.tracer.error("[%s] if no password, HanaDbPasswordKeyVaultUrl and PasswordKeyVaultMsiClientId must be given" % self.fullName)
+            return False
+         # code to get password
+         self.hanaDbPassword = "bla"
       return True
 
-   # Static method called by the onboarding payload to validate the HANA connection
-   @staticmethod
-   def validate(tracer, hanaConfig) -> bool:
-      tracer.info("connecting to HANA instance to run test query. Hostname: %s" % hanaConfig["HanaHostname"])
+   # Validate that we can establish a HANA connection and run queries
+   def validate(self) -> bool:
+      tracer.info("connecting to HANA instance to run test query. Hostname: %s" % self.hanaHostname)
 
       # Try to establish a HANA connection using the details provided by the user
       try:
-         connection = dbapi.connect(address = hanaConfig["HanaHostname"],
-                                    port = hanaConfig["HanaDbSqlPort"],
-                                    user = hanaConfig["HanaDbUsername"],
-                                    password = hanaConfig["HanaDbPassword"],
-                                    CONNECTTIMEOUT = TIMEOUT_HANA_MS)
+         connection = self._establishHanaConnectionToHost()
          cursor = connection.cursor()
          if not connection.isconnected():
-            tracer.error("unable to validate connection status")
+            tracer.error("[%s] unable to validate connection status" % self.fullName)
             return False
       except Exception as e:
-         tracer.error("could not connect to HANA node %s:%d (%s)" % (hanaConfig["HanaHostname"],
-                                                                     hanaConfig["HanaDbSqlPort"],
-                                                                     e))
+         tracer.error("[%s] could not establish HANA connection %s:%d (%s)" % (self.fullName,
+                                                                               self.hanaHostname,
+                                                                               self.hanaDbSqlPort,
+                                                                               e))
          return False
 
       # Try to run a query against the services view
@@ -93,38 +90,45 @@ class SapHanaProvider(SapmonContentProvider):
          cursor.execute("SELECT * FROM M_SERVICES")
          connection.close()
       except Exception as e:
-         tracer.critical("could run test query (%s)" % e)
+         tracer.error("[%s] could run validation query (%s)" % (self.fullName, e))
          return False
-
       return True
+
+   def _establishHanaConnectionToHost(self,
+                                      hostname = self.hanaHostname,
+                                      port = self.hanaDbSqlPort,
+                                      timeout = TIMEOUT_HANA_SECS):
+      return dbapi.connect(address = host,
+                           port = self.hanaDbSqlPort,
+                           user = self.hanaDbUsername,
+                           password = self.hanaDbPassword,
+                           timeout = timeout,
+                           CONNECTTIMEOUT = timeout * 1000)
 
 ###############################################################################
 
 # Implements a SAP HANA-specific monitoring check
-class SapHanaCheck(SapmonCheck):
+class saphanaCheck(ProviderCheck):
    lastResult = None
    colTimeGenerated = None
-   hanaConfig = {}
    
    def __init__(self,
                 provider: SapmonContentProvider,
-                secrets,
                 **kwargs):
-      self.hanaConfig = secrets
-      super().__init__(provider, **kwargs)
+      return super().__init__(provider, **kwargs)
 
    # Obtain one working HANA connection (client-side failover logic)
    def _getHanaConnection(self):
-      self.tracer.info("establishing connection with HANA instance")
+      self.tracer.info("[%s] establishing connection with HANA instance" % self.fullName)
 
       # Check if HANA host config has been retrieved from DB yet
       if "hostConfig" not in self.provider.state:
          # Host config has not been retrieved yet; our only candidate is the one provided by user
-         self.tracer.debug("no host config has been persisted to provider yet, using user-provided host")
-         hostsToTry = [self.hanaConfig["HanaHostname"]]
+         self.tracer.debug("[%s] no host config has been persisted yet, using user-provided host" % self.fullName)
+         hostsToTry = [self.providerInstance.hanaHostname]
       else:
          # Host config has already been retrieved; rank the hosts to compile a list of hosts to try
-         self.tracer.debug("host config has been persisted to provider, deriving prioritized host list")
+         self.tracer.debug("[%s] host config has been persisted to provider, deriving prioritized host list" % self.fullName)
          hostConfig = self.provider.state["hostConfig"]
          hostsToTry = [h["host"] for h in hostConfig]
 
@@ -133,22 +137,19 @@ class SapHanaCheck(SapmonCheck):
       self.tracer.debug("hostsToTry=%s" % hostsToTry)
       for host in hostsToTry:
          try:
-            connection = dbapi.connect(address = host,
-                                       port = self.hanaConfig["HanaDbSqlPort"],
-                                       user = self.hanaConfig["HanaDbUsername"],
-                                       password = self.hanaConfig["HanaDbPassword"],
-                                       timeout = 5,
-                                       CONNECTTIMEOUT = TIMEOUT_HANA_MS)
+            connection = self.providerInstance._establishHanaConnectionToHost(hostname = host)
             # Validate that we're indeed connected
             if connection.isconnected():
                cursor = connection.cursor()
                break
          except Exception as e:
-            self.tracer.warning("could not connect to HANA node %s:%d (%s)" % (host,
-                                                                               self.hanaConfig["HanaDbSqlPort"],
-                                                                               e))
+            self.tracer.warning("[%s] could not connect to HANA node %s:%d (%s)" % (self.fullName,
+                                                                                    host,
+                                                                                    self.providerInstance.hanaDbSqlPort,
+                                                                                    e))
       if not cursor:
-         self.tracer.error("unable to connect to any HANA node (hostsToTry=%s)" % hostsToTry)
+         self.tracer.error("[%s] unable to connect to any HANA node (hosts to try=%s)" % (self.fullName,
+                                                                                          hostsToTry))
          return (None, None, None)
       return (connection, cursor, host)
 
@@ -157,11 +158,12 @@ class SapHanaCheck(SapmonCheck):
                    sql: str,
                    isTimeSeries: bool,
                    initialTimespanSecs: int) -> str:
-      self.tracer.info("preparing SQL statement")
+      self.tracer.info("[%s] preparing SQL statement" % self.fullName)
 
       # Insert logic to get server UTC time (_SERVER_UTC)
       sqlTimestamp = ", CURRENT_UTCTIMESTAMP AS %s FROM DUMMY," % COL_SERVER_UTC
-      self.tracer.debug("sqlTimestamp=%s" % sqlTimestamp)
+      self.tracer.debug("[%s] sqlTimestamp=%s" % (self.fullName,
+                                                  sqlTimestamp))
       preparedSql = sql.replace(" FROM", sqlTimestamp, 1)
       
       # If time series, insert time condition
@@ -170,23 +172,28 @@ class SapHanaCheck(SapmonCheck):
 
          # TODO(tniek) - make WHERE conditions for time series queries more flexible
          if not lastRunServer:
-            self.tracer.info("time series query for HANA check %s has never been run, applying initalTimespanSecs=%d" % \
-               (self.name, initialTimespanSecs))
+            self.tracer.info("[%s] time series query has never been run, applying initalTimespanSecs=%d" % \
+               (self.fullName, initialTimespanSecs))
             lastRunServerUtc = "ADD_SECONDS(NOW(), i.VALUE*(-1) - %d)" % initialTimespanSecs
          else:
             if not isinstance(lastRunServer, datetime):
-               self.tracer.error("lastRunServer=%s has not been de-serialized into a valid datetime object" % str(lastRunServer))
+               self.tracer.error("[%s] lastRunServer=%s could not been de-serialized into datetime object" % (self.fullName,
+                                                                                                              str(lastRunServer)))
                return None
             try:
                lastRunServerUtc = "'%s'" % lastRunServer.strftime(TIME_FORMAT_HANA)
             except Exception as e:
-               self.tracer.error("could not format lastRunServer=%s into HANA format (%s)" % (str(lastRunServer), e))
+               self.tracer.error("[%s] could not format lastRunServer=%s into HANA format (%s)" % (self.fullName,
+                                                                                                   str(lastRunServer),
+                                                                                                   e))
                return None
-            self.tracer.info("time series query for check %s.%s has been run at %s, filter out only new records since then" % \
-               (self.provider.name, self.name, lastRunServerUtc))
-         self.tracer.debug("lastRunServerUtc=%s" % lastRunServerUtc)
+            self.tracer.info("[%s] time series query has been run at %s, filter out only new records since then" % \
+               (self.fullName, lastRunServerUtc))
+         self.tracer.debug("[%s] lastRunServerUtc=%s" % (self.fullName,
+                                                         lastRunServerUtc))
          preparedSql = sql.replace("{lastRunServerUtc}", lastRunServerUtc, 1)
-         self.tracer.debug("preparedSql=%s" % preparedSql)
+         self.tracer.debug("[%s] preparedSql=%s" % (self.fullName,
+                                                    preparedSql))
 
       # Return the finished SQL statement
       return preparedSql
@@ -194,48 +201,19 @@ class SapHanaCheck(SapmonCheck):
    # Calculate the MD5 hash of a result set
    def _calculateResultHash(self,
                             resultRows: List[List[str]]) -> str:
-      self.tracer.info("calculating hash of SQL query result")
+      self.tracer.info("[%s] calculating hash of SQL query result" % self.fullName)
       resultHash = None
       try:
          resultHash = hashlib.md5(str(resultRows).encode("utf-8")).hexdigest()
          self.tracer.debug("resultHash=%s" % resultHash)
       except Exception as e:
-         self.tracer.error("could not calculate result hash (%s)" % e)
+         self.tracer.error("[%s] could not calculate result hash (%s)" % (self.fullName,
+                                                                          e))
       return resultHash
-
-   # Generate a JSON-encoded string with the last query result
-   def _generateJsonString(self) -> str:
-      # TODO(tniek): Consider SapmonCheck._generateJsonString() for all check types
-      self.tracer.info("converting SQL query result set into JSON")
-      logData = []
-      
-      # Only loop through the result if there is one
-      if self.lastResult:
-         (colIndex, resultRows) = self.lastResult
-         # Iterate through all rows of the last query result
-         for r in resultRows:
-            logItem = {
-               "CONTENT_VERSION": self.provider.version,
-               "SAPMON_VERSION": PAYLOAD_VERSION
-            }
-            for c in colIndex.keys():
-               # Unless it's the column mapped to TimeGenerated, remove internal fields
-               if c != self.colTimeGenerated and (c.startswith("_") or c == "DUMMY"):
-                  continue
-               logItem[c] = r[colIndex[c]]
-            logData.append(logItem)
-
-      # Convert temporary dictionary into JSON string
-      try:
-         resultJsonString = json.dumps(logData, sort_keys=True, indent=4, cls=JsonEncoder)
-         self.tracer.debug("resultJson=%s" % str(resultJsonString))
-      except Exception as e:
-         self.tracer.error("could not encode logItem=%s into JSON (%s)" % (logItem, e))
-      return resultJsonString
 
    # Update the internal state of this check (including last run times)
    def _updateState(self) -> bool:
-      self.tracer.info("updating internal state of check %s.%s" % (self.provider.name, self.name))
+      self.tracer.info("[%s] updating internal state" % self.fullName)
       (colIndex, resultRows) = self.lastResult
 
       # Always store lastRunLocal; if the check result doesn't have it, use current time
@@ -253,15 +231,15 @@ class SapHanaCheck(SapmonCheck):
             self.state["lastRunServer"] = resultRows[0][colIndex[COL_SERVER_UTC]]
 
       self.state["lastResultHash"] = self._calculateResultHash(resultRows)
-      self.tracer.info("internal state successfully updated")
+      self.tracer.info("[%s] internal state successfully updated" % self.fullName)
       return True
 
    # Connect to HANA and run the check-specific SQL statement
-   def executeSql(self,
-                  sql: str,
-                  isTimeSeries: bool = False,
-                  initialTimespanSecs: int = 60) -> bool:
-      self.tracer.info("connecting to HANA and executing SQL for check %s" % self.name)
+   def __executeSql(self,
+                    sql: str,
+                    isTimeSeries: bool = False,
+                    initialTimespanSecs: int = 60) -> bool:
+      self.tracer.info("[%s] connecting to HANA and executing SQL" % self.fullName)
 
       # Marking which column will be used for TimeGenerated
       self.colTimeGenerated = COL_TIMESERIES_UTC if isTimeSeries else COL_SERVER_UTC
@@ -280,17 +258,22 @@ class SapHanaCheck(SapmonCheck):
 
       # Execute SQL statement
       try:
-         self.tracer.debug("executing SQL statement %s" % preparedSql)
+         self.tracer.debug("[%s] executing SQL statement %s" % (self.fullName,
+                                                                preparedSql))
          cursor.execute(preparedSql)
          colIndex = {col[0] : idx for idx, col in enumerate(cursor.description)}
          resultRows = cursor.fetchall()
       except Exception as e:
-         self.tracer.error("could not execute SQL %s (%s)" % (preparedSql, e))
+         self.tracer.error("[%s] could not execute SQL %s (%s)" % (self.fullName,
+                                                                   preparedSql,
+                                                                   e))
          return False
 
       self.lastResult = (colIndex, resultRows)
-      self.tracer.debug("lastResult.colIndex=%s" % colIndex)
-      self.tracer.debug("lastResult.resultRows=%s " % resultRows)
+      self.tracer.debug("[%s] lastResult.colIndex=%s" % (self.fullName,
+                                                         colIndex))
+      self.tracer.debug("[%s] lastResult.resultRows=%s " % (self.fullName,
+                                                            resultRows))
 
       # Update internal state
       if not self._updateState():
@@ -298,18 +281,19 @@ class SapHanaCheck(SapmonCheck):
 
       # Disconnect from HANA server to avoid memory leaks
       try:
-         self.tracer.debug("closing HANA connection")
+         self.tracer.debug("[%s] closing HANA connection" % self.fullName)
          connection.close()
       except Exception as e:
-         self.tracer.error("could not close connection to HANA instance (%s)" % e)
+         self.tracer.error("[%s] could not close connection to HANA instance (%s)" % (self.fullName,
+                                                                                      e))
          return False
 
-      self.tracer.info("successfully ran SQL for check %s" % self.name)
+      self.tracer.info("[%s] successfully ran SQL for check" % self.fullName)
       return True
 
    # Parse result of the query against M_LANDSCAPE_HOST_CONFIGURATION and store it internally
-   def parseHostConfig(self) -> bool:
-      self.tracer.info("parsing HANA host configuration and storing it in provider state")
+   def __parseHostConfig(self) -> bool:
+      self.tracer.info("[%s] parsing HANA host configuration and storing it in provider state" % self.fullName)
 
       # Iterate through the results and store a mini version in the global provider state
       hosts = []
@@ -326,9 +310,9 @@ class SapHanaCheck(SapmonCheck):
       return True
 
    # Probe SQL Connection to all nodes in HANA landscape
-   def probeSqlConnection(self,
-                          probeTimeout: int = None) -> bool:
-      self.tracer.info("probing SQL connection to all HANA nodes")
+   def __probeSqlConnection(self,
+                            probeTimeout: int = None) -> bool:
+      self.tracer.info("[%s] probing SQL connection to all HANA nodes" % self.fullName)
 
       # If no probeTimeout parameter is defined for this action, use the default
       if probeTimeout is None:
@@ -339,7 +323,7 @@ class SapHanaCheck(SapmonCheck):
 
       # This check requires the HANA host configuration to be run first
       if "hostConfig" not in self.provider.state:
-         self.tracer.error("HANA host configuration check has not been executed and/or persisted in provider state yet")
+         self.tracer.error("[%s] HANA host config check has not been executed yet" % self.fullName)
          return False
 
       # Iterate through all hosts (alphabetical order) from the host config
@@ -351,7 +335,7 @@ class SapHanaCheck(SapmonCheck):
          success = False
 
          # Given the SQL port (3xxyy), calculate hdbnameserver port (3xx01)
-         portNameserver = int(str(self.hanaConfig["HanaDbSqlPort"])[:-2] + "01")
+         portNameserver = int(str(self.providerInstance.hanaDbSqlPort)[:-2] + "01")
 
          # Probe connection to the hdbnameserver of a particular node
          # This workaround is required, since in a n+m scale-out scenario (with m>0),
@@ -359,11 +343,9 @@ class SapHanaCheck(SapmonCheck):
          # will fail. Probing hdbnameserver is a safer option to detect connectivity.
          startTime = time.time()
          try:
-            dbapi.connect(address = host,
-                          port = portNameserver,
-                          user = self.hanaConfig["HanaDbUsername"],
-                          password = self.hanaConfig["HanaDbPassword"],
-                          CONNECTTIMEOUT = probeTimeout)
+            self.providerInstance._establishHanaConnectionToHost(hostname = host,
+                                                                 port = portNameserver,
+                                                                 timeout = probeTimeout)
          except Exception as e:
             # We know that SQL connections to hdbnameserver will fail
             # Let's determine if the HANA landscape is up, based on the error code
@@ -371,20 +353,22 @@ class SapHanaCheck(SapmonCheck):
             if "89008" in msg or "socket closed" in msg:
                latency = (time.time() - startTime) * 1000
                success = True
-               self.tracer.debug("received expected error probing HANA nameserver %s:%d (%s" % (host,
-                                                                                                portNameserver,
-                                                                                                e))
+               self.tracer.debug("[%s] received expected error probing HANA nameserver %s:%d (%s" % (self.fullName,
+                                                                                                     host,
+                                                                                                     portNameserver,
+                                                                                                     e))
             elif "89001" in msg or "cannot resolve host name" in msg \
             or "89006" in msg or "connection refused" in msg \
             or "timeout expired" in msg:
-              self.tracer.error("HANA nameserver %s:%d is not responding to probe (%s)" % (host,
-                                                                                           self.hanaConfig["HanaDbSqlPort"],
-                                                                                           e))
+              self.tracer.error("[%s] HANA nameserver %s:%d is not responding to probe (%s)" % (self.fullName,
+                                                                                                host,
+                                                                                                portNameserver,
+                                                                                                e))
             else:
-              self.tracer.error("unexpected error when probing HANA nameserver %s:%d (%s)" % (host,
-                                                                                              self.hanaConfig["HanaDbSqlPort"],
-                                                                                              e))
-
+              self.tracer.error("[%s] unexpected error when probing HANA nameserver %s:%d (%s)" % (self.fullName,
+                                                                                                   host,
+                                                                                                   portNameserver,
+                                                                                                   e))
          # Build probing result tuple with current local time
          probeResults.append(
                [
@@ -396,7 +380,8 @@ class SapHanaCheck(SapmonCheck):
             )
 
       # Store complete probing result internally and update state
-      self.tracer.debug("probeResults=%s" % probeResults)
+      self.tracer.debug("[%s] probeResults=%s" % (self.fullName,
+                                                  probeResults))
       self.lastResult = (
             {
                COL_LOCAL_UTC: 0,
@@ -411,4 +396,3 @@ class SapHanaCheck(SapmonCheck):
       if not self._updateState():
          return False
       return True
-
