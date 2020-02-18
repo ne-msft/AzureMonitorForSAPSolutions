@@ -12,27 +12,27 @@ import re
 
 # Payload modules
 from helper.tracing import *
-from provider.saphana import *
 
 # Internal context handler
 class Context(object):
    azKv = None
-   hanaInstances = []
    sapmonId = None
    vmInstance = None
    vmTage = None
-   enableCustomerAnalytics = None
-   providerSecrets = []
    analyticsTracer = None
-   appTracer = None
+   tracer = None
 
-   def __init__(self, tracer,
+   globalParams = {}
+   instances = []
+
+   def __init__(self,
+                tracer,
                 operation: str):
       self.tracer = tracer
       self.tracer.info("initializing context")
 
       # Retrieve sapmonId via IMDS
-      self.vmInstance = AzureInstanceMetadataService.getComputeInstance(self.appTracer,
+      self.vmInstance = AzureInstanceMetadataService.getComputeInstance(self.tracer,
                                                                         operation)
       self.vmTags = dict(
          map(lambda s : s.split(':'),
@@ -42,14 +42,17 @@ class Context(object):
       self.sapmonId = self.vmTags["SapMonId"]
       self.tracer.debug("sapmonId=%s " % self.sapmonId)
 
-      # Add storage queue log handler to appTracer
+      # Add storage queue log handler to tracer
       tracing.addQueueLogHandler(self.tracer, self)
 
-      # Initializing appTracer for emitting metrics
+      # Initializing tracer for emitting metrics
       self.analyticsTracer = tracing.initCustomerAnalyticsTracer(self.tracer, self)
 
       # Get KeyVault
-      self.azKv = AzureKeyVault(self.tracer, KEYVAULT_NAMING_CONVENTION % self.sapmonId, self.vmTags.get("SapMonMsiClientId", None))
+      self.azKv = AzureKeyVault(self.tracer,
+                                KEYVAULT_NAMING_CONVENTION % self.sapmonId,
+                                self.vmTags.get("SapMonMsiClientId",
+                                None))
       if not self.azKv.exists():
          sys.exit(ERROR_KEYVAULT_NOT_FOUND)
 

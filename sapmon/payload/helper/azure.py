@@ -167,8 +167,7 @@ class AzureLogAnalytics:
    def ingest(self,
               customLog: str,
               jsonData: str,
-              colTimeGenerated: str) -> bytes:
-
+              colTimeGenerated: str = None) -> bytes:
       # Sign the content as required by Data Collector API
       def buildSig(content: str,
                    timestamp: str) -> str:
@@ -193,9 +192,12 @@ x-ms-date:%s
          "content-type":  "application/json",
          "Authorization": buildSig(jsonData, timestamp),
          "Log-Type":      customLog,
-         "x-ms-date":     timestamp,
-         "time-generated-field": colTimeGenerated
+         "x-ms-date":     timestamp
       }
+      # Only set the time-generated-field header if colTimeGenerated was provided
+      if colTimeGenerated:
+        headers["time-generated-field"] = colTimeGenerated
+
       self.tracer.debug("data=%s" % jsonData)
       response = None
 

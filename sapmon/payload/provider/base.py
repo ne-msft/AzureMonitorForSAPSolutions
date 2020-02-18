@@ -174,6 +174,7 @@ class ProviderCheck(ABC):
    state = {}
    fullName = None
    tracer = None
+   colTimeGenerated = None
 
    def __init__(self,
                 providerInstance: ProviderInstance,

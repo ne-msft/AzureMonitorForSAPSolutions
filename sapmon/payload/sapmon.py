@@ -29,15 +29,16 @@ from provider.saphana import *
 
 ###############################################################################
 
-class providerChecks(threading.Thread):
-   def __init__(self, provider):
+class ProviderInstanceThread(threading.Thread):
+   def __init__(self, providerInstance):
       threading.Thread.__init__(self)
-      self.provider = provider
+      self.providerInstance = providerInstance
 
    def run(self):
       global ctx, appTracer
       for check in self.provider.checks:
-         appTracer.info("starting check %s.%s" % (self.provider.name, check.name))
+         tracer.info("starting check %s" % (check.fullName))
+
          # Skip this check if it's not enabled or not due yet
          if (check.isEnabled() == False) or (check.isDue() == False):
             continue
@@ -51,7 +52,7 @@ class providerChecks(threading.Thread):
                          check.colTimeGenerated)
 
          # Persist updated internal state to provider state file
-         self.provider.writeState()
+         self.providerInstance.writeState()
 
          # Ingest result into Customer Analytics
          enableCustomerAnalytics = ctx.globalParams.get("enableCustomerAnalytics", True)
@@ -60,11 +61,12 @@ class providerChecks(threading.Thread):
                                              ctx,
                                              check.customLog,
                                              resultJson)
+      return
 
 ###############################################################################
 
 # Load entire config from KeyVault (global parameters and provider instances)
-def loadConfig() -> None:
+def loadConfig() -> bool:
    global ctx, tracer
    tracer.info("loading config from KeyVault")
 
@@ -102,7 +104,9 @@ def loadConfig() -> None:
    print("instances = %s" % instances)
    ctx.globalParams = globalParams
    ctx.instances = instances
-   return
+   if globalParams == {} or len(instances) == 0:
+      return False
+   return True
 
 # Save specific instance properties to customer KeyVault
 def saveInstanceToConfig(instance: Dict[str, str]) -> bool:
@@ -205,35 +209,46 @@ def deleteProvider(args: str) -> None:
    tracer.critical("provider delete not yet implemented")
    return
 
-# Initializes a provider based on its name
-def initProvider(providerName:str, secrets):
-   global tracer
-   tracer.info("initializing provider %s" % providerName)
-
-   contentFullPath = "%s/%s.json" % (PATH_CONTENT, providerName)
-   tracer.debug("providerName=%s, contentFullPath=%s" % (providerName, contentFullPath))
-
-   contentProvider = eval("%sProvider" % providerName)(tracer, contentFullPath, secrets)
-
-   tracer.info("successfully loaded content provider %s" % providerName)
-   return contentProvider
-
 # Execute the actual monitoring payload
 def monitor(args: str) -> None:
    global ctx, tracer
    tracer.info("starting monitor payload")
-   ctx.parseSecrets()
+
    threads = []
+   if not loadConfig():
+      tracer.critical("failed to load config from KeyVault")
+      sys.exit(ERROR_LOADING_CONFIG)
 
-   for secrets in ctx.providerSecrets:
-      # There is only one type of provider right now, in the future, the provider name will be a part of the secret
-      provider = initProvider(HanaSecretName, secrets)
-      providerThread = providerChecks(provider)
-      providerThread.start()
-      threads.append(providerThread)
+   logAnalyticsWorkspaceId = ctx.globalParams.get("LogAnalyticsWorkspaceId", None)
+   logAnalyticsSharedKey = ctx.globalParams.get("LogAnalyticsSharedKey", None)
+   if not logAnalyticsWorkspaceId or not logAnalyticsSharedKey:
+      tracer.critical("global config must contain LogAnalyticsWorkspaceId and LogAnalyticsSharedKey")
+      sys.exit(ERROR_GETTING_LOG_CREDENTIALS)
+   ctx.azLa = AzureLogAnalytics(tracer,
+                                logAnalyticsWorkspaceId,
+                                logAnalyticsSharedKey)
 
-   for thread in threads:
-      thread.join()
+   for i in ctx.instances:
+      instanceName = i.get("name", None)
+      providerType = i.get("type", None)
+      providerProperties = i.get("properties", None)
+      if not instanceName or not providerType or not providerProperties:
+         tracer.critical("provider is missing name (%s), type (%s) or properties" % (instanceName,
+                                                                                     providerType))
+      try:
+         providerClass = CLASSNAME_PROVIDER % providerType
+         instance = eval(providerClass)(tracer,
+                                        providerProperties)
+      except Exception as e:
+         tracer.critical("could not instantiate %s - wrong provider name? (%s)" % (providerClass,
+                                                                                   e))
+         continue
+      thread = ProviderInstanceThread(instance)
+      thread.start()
+      threads.append(thread)
+
+   for t in threads:
+      t.join()
 
    tracer.info("monitor payload successfully completed")
    return
