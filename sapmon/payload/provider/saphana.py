@@ -31,11 +31,8 @@ class saphanaProviderInstance(ProviderInstance):
 
    def __init__(self,
                 tracer: logging.Logger,
-                name: str,
                 providerProperties: Dict[str, str],
                 **kwargs):
-      # Sets the provider type based on the script filename
-      self.providerType = __file__.split(".py")[0]
       return super().__init__(tracer,
                               name,
                               providerProperties,
@@ -62,8 +59,33 @@ class saphanaProviderInstance(ProviderInstance):
          if not hanaDbPasswordKeyVaultUrl or not passwordKeyVaultMsiClientId:
             self.tracer.error("[%s] if no password, HanaDbPasswordKeyVaultUrl and PasswordKeyVaultMsiClientId must be given" % self.fullName)
             return False
-         # code to get password
-         self.hanaDbPassword = "bla"
+
+         # Determine URL of separate KeyVault
+         self.tracer.info("[%s] fetching HANA credentials from separate KeyVault" % self.fullName)
+         try:
+            vaultNameSearch = re.search("https://(.*).vault.azure.net", hanaDbPasswordKeyVaultUrl)
+            kvName = vaultNameSearch.group(1)
+         except Exception as e:
+            self.tracer.error("[%s] invalid URL for the separate KeyVault" % self.fullName)
+            return False
+
+         # Create temporary KeyVault object to fetch relevant secret
+         try:
+            kv = AzureKeyVault(self.tracer,
+                               kvName,
+                               passwordKeyVaultMsiClientId)
+         except Exception as e:
+            self.tracer.error("[%s] error accessing the separate KeyVault (%s)" % (self.fullName,
+                                                                                   e))
+            return False
+         self.tracer.debug("[%s] kv=%s" % (self.fullName,
+                                           kv))
+         try:
+            self.hanaDbPassword = kv.getSecret(hanaDbPasswordKeyVaultUrl)
+         except Exception as e:
+            self.tracer.error("[%s] error accessing the secret inside the separate KeyVault (%s)" % (self.fullName,
+                                                                                                     e))
+            return False        
       return True
 
    # Validate that we can establish a HANA connection and run queries
@@ -235,7 +257,7 @@ class saphanaCheck(ProviderCheck):
       return True
 
    # Connect to HANA and run the check-specific SQL statement
-   def __executeSql(self,
+   def _actionExecuteSql(self,
                     sql: str,
                     isTimeSeries: bool = False,
                     initialTimespanSecs: int = 60) -> bool:
@@ -292,7 +314,7 @@ class saphanaCheck(ProviderCheck):
       return True
 
    # Parse result of the query against M_LANDSCAPE_HOST_CONFIGURATION and store it internally
-   def __parseHostConfig(self) -> bool:
+   def _actionParseHostConfig(self) -> bool:
       self.tracer.info("[%s] parsing HANA host configuration and storing it in provider state" % self.fullName)
 
       # Iterate through the results and store a mini version in the global provider state
@@ -310,7 +332,7 @@ class saphanaCheck(ProviderCheck):
       return True
 
    # Probe SQL Connection to all nodes in HANA landscape
-   def __probeSqlConnection(self,
+   def _actionProbeSqlConnection(self,
                             probeTimeout: int = None) -> bool:
       self.tracer.info("[%s] probing SQL connection to all HANA nodes" % self.fullName)
 

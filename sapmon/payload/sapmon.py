@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # 
-#       Azure Monitor for SAP Solutions payload script
-#       (deployed on collector VM)
+#       Azure Monitor for SAP Solutions - Payload
+#       (to be deployed on collector VM)
 #
 #       License:        GNU General Public License (GPL)
-#       (c) 2019        Microsoft Corp.
+#       (c) 2020        Microsoft Corp.
 #
 
 # Python modules
@@ -19,7 +19,6 @@ import threading
 # Payload modules
 from const import *
 from helper.azure import *
-from helper.config import ConfigHandler
 from helper.context import *
 from helper.tools import *
 from helper.tracing import *
@@ -27,16 +26,6 @@ from helper.updateprofile import *
 from helper.updatefactory import *
 
 from provider.saphana import *
-
-###############################################################################
-
-# TODO(tniek) - Refactor this so each provider gets added automatically
-availableProviders["saphana"] = SapHanaProvider
-
-# TODO - refactor the list of content types into provider
-sapmonContentTypes = {
-   "HANA": "SapHanaCheck"
-}
 
 ###############################################################################
 
@@ -65,103 +54,174 @@ class providerChecks(threading.Thread):
          self.provider.writeState()
 
          # Ingest result into Customer Analytics
-         if ctx.enableCustomerAnalytics:
-             ctx.ingestCustomerAnalytics(check.customLog, resultJson)
+         enableCustomerAnalytics = ctx.globalParams.get("enableCustomerAnalytics", True)
+         if enableCustomerAnalytics:
+             tracing.ingestCustomerAnalytics(tracer,
+                                             ctx,
+                                             check.customLog,
+                                             resultJson)
 
 ###############################################################################
 
+# Load entire config from KeyVault (global parameters and provider instances)
+def loadConfig() -> None:
+   global ctx, tracer
+   tracer.info("loading config from KeyVault")
 
+   globalParams = {}
+   instances = []
 
+   secrets = ctx.azKv.getCurrentSecrets()
+   for secretName in secrets.keys():
+      tracer.debug("parsing secret %s" % secretName)
+      secretValue = secrets[secretName]
+      try:
+         instanceProperties = json.loads(secretValue)
+      except json.decoder.JSONDecodeError as e:
+         tracer.error("invalid JSON format for secret %s=%s (%s)" % (secretName, secretValue, e))
+         continue
+      if secretName == CONFIG_SECTION_GLOBAL:
+         globalParams = instanceProperties
+      else:
+         parts = secretName.split("-")
+         if len(parts) != 2:
+            tracer.error("invalid secret name (should be: provider-name): %s" % (secretName))
+            continue
+         providerType, instanceName = parts[0], parts[1]
+         providerClass = CLASSNAME_PROVIDER % providerType
+         if not providerClass in dir():
+            tracer.error("unknown provider type %s" % providerType)
+            continue
+         provider = ctx.availableProviders[providerType]
+         instance = {"type": providerType,
+                     "name": instanceName,
+                     "properties": instanceProperties}
+         instances.append(instance)
 
+   print("globalParams = %s" % globalParams)
+   print("instances = %s" % instances)
+   ctx.globalParams = globalParams
+   ctx.instances = instances
+   return
 
+# Save specific instance properties to customer KeyVault
+def saveInstanceToConfig(instance: Dict[str, str]) -> bool:
+   global ctx, tracer
+   instanceName = instance.get("name", None)
+   providerType = instance.get("type", None)
+   instanceProperties = instance.get("properties", None)
+   if not instanceName or not providerType or not instanceProperties:
+      tracer.error("instance to save is missing name, type or properties")
+      return False
+   tracer.info("saving instance %s to customer KeyVault" % instanceName)
+   if not providerType in ctx.availableProviders:
+      tracer.error("unknown provider type %s (available types: %s)" % (providerType, list(ctx.availableProviders.keys())))
+      return False
+   try:
+      secretValue = json.dumps(instanceProperties)
+   except json.encoder.JSONEncodeError as e:
+      tracer.error("cannot JSON encode instance properties (%s)" % e)
+      return False   
+   secretName = "%s-%s" % (providerType, instanceName)
+   return ctx.azKv.setSecret(secretName,
+                             secretValue)
 
 # Store credentials in the customer KeyVault
 # (To be executed as custom script upon initial deployment of collector VM)
 def onboard(args: str) -> None:
-   global ctx, appTracer
-   appTracer.info("starting onboarding payload")
+   global ctx, tracer
+   tracer.info("starting onboarding")
+   error = False
 
-   if args.HanaDbConfigurationJson is None:
-      # Store provided credentials as a KeyVault secret
-      hanaSecretValue = json.dumps([{
-         "HanaHostname":                args.hanaHostname,
-         "HanaDbName":                  args.hanaDbName,
-         "HanaDbUsername":              args.hanaDbUsername,
-         "HanaDbPassword":              args.hanaDbPassword,
-         "HanaDbPasswordKeyVaultUrl":   args.hanaDbPasswordKeyVaultUrl,
-         "HanaDbSqlPort":               args.hanaDbSqlPort,
-         "PasswordKeyVaultMsiClientId": args.passwordKeyVaultMsiClientId,
-         "EnableCustomerAnalytics":     args.enableCustomerAnalytics,
-         }])
+   # Update global parameters and save them to KeyVault
+   ctx.globalParams = {"LogAnalyticsWorkspaceId": args.logAnalyticsWorkspaceId,
+                       "LogAnalyticsSharedKey": args.logAnalyticsSharedKey,
+                       "EnableCustomerAnalytics": args.enableCustomerAnalytics}
+   if not ctx.azKv.setSecret(CONFIG_SECTION_GLOBAL,
+                             json.dumps(ctx.globalParams)):
+      tracer.critical("could not save global config to KeyVault")
+      sys.exit(ERROR_SETTING_KEYVAULT_SECRET)
+
+   try:
+      providerInstances = json.loads(args.providers)
+   except json.decoder.JSONDecodeError as e:
+      tracer.error("invalid JSON format for provider instance list (%s)" % e)
+   for p in providerInstances:
+      tracer.debug("trying to add provider instance %s" % p)
+      if not addProvider(providerInstance = p):
+         error = True
+
+   if error:
+      tracer.error("onboarding failed with errors")
+      sys.exit(ERROR_ONBOARDING)
    else:
-      # validate it is actual JSON
-      jsonObj = json.loads(args.HanaDbConfigurationJson)
-      hanaSecretValue = json.dumps(jsonObj)
-   appTracer.info("storing HANA credentials as KeyVault secret")
-   try:
-      ctx.azKv.setSecret(HanaSecretName, hanaSecretValue)
-   except Exception as e:
-      appTracer.critical("could not store HANA credentials in KeyVault secret (%s)" % e)
-      sys.exit(ERROR_SETTING_KEYVAULT_SECRET)
-
-   # Store credentials for new Log Analytics Workspace (created by HanaRP)
-   laSecretName = "AzureLogAnalytics"
-   appTracer.debug("laSecretName=%s" % laSecretName)
-   laSecretValue = json.dumps({
-      "LogAnalyticsWorkspaceId": args.logAnalyticsWorkspaceId,
-      "LogAnalyticsSharedKey":   args.logAnalyticsSharedKey,
-      })
-   appTracer.info("storing Log Analytics credentials as KeyVault secret")
-   try:
-      ctx.azKv.setSecret(laSecretName,
-                         laSecretValue)
-   except Exception as e:
-      appTracer.critical("could not store Log Analytics credentials in KeyVault secret (%s)" % e)
-      sys.exit(ERROR_SETTING_KEYVAULT_SECRET)
-
-   # Check connectivity to HANA instance
-   hanaDetails = json.loads(hanaSecretValue)
-   for hanaDetail in hanaDetails:
-      if not hanaDetail["HanaDbPassword"]:
-         appTracer.info("no HANA password provided; need to fetch password from separate KeyVault")
-         hanaDetail["HanaDbPassword"] = ctx.fetchHanaPasswordFromKeyVault(hanaDetail["HanaDbPasswordKeyVaultUrl"],
-                                                                          hanaDetail["PasswordKeyVaultMsiClientId"])
-
-      if not SapHanaProvider.validate(appTracer, hanaDetail):
-         appTracer.critical("validation of HANA instance failed, aborting")
-         sys.exit(ERROR_HANA_CONNECTION)
-
-   appTracer.info("onboarding payload successfully completed")
+      tracer.info("onboarding successfully completed")
    return
 
+# Used by "onboard" to set each provider instance,
+# or by "provider add" to set a single provider instance
+def addProvider(args: str = None,
+                providerInstance: Dict[str, str] = None) -> bool:
+   global ctx, tracer
+   # If triggered directly via command-line (sapmon.py provider add)
+   if args:
+      providerInstance = {"name": args.name,
+                          "type": args.type,
+                          "properties": args.properties}
 
+   instanceName = providerInstance.get("name", None)
+   tracer.info("adding provider %s to KeyVault" % instanceName)
+   providerType = providerInstance.get("type", None)
+   providerPropertiesJson = providerInstance.get("properties", None)
+   if not instanceName or not providerType or not providerProperties:
+      tracer.error("provider incomplete; must have name, type and properties")
+      return False
+   try:
+      providerProperties = json.loads(providerPropertiesJson)
+   except json.decoder.JSONDecodeError as e:
+      tracer.error("invalid JSON format (%s)" % e)
+      return False
 
+   # Instantiate provider, so we can run validation check
+   try:
+      providerClass = CLASSNAME_PROVIDER % p["type"]
+      instance = eval(providerClass)(tracer,
+                                         p["properties"])
+   except Exception as e:
+      tracer.critical("could not instantiate %s - wrong provider name? (%s)" % (providerClass,
+                                                                                e))
+      return False
+   if not instance.validate():
+      tracer.warning("validation check for provider instance %s failed" % instance.fullName)
+      return False
+   if not saveInstanceToConfig(p):
+      tracer.error("could not save provider instance %s to KeyVault" % instance.fullName)
+      return False
+   return True
 
-def addProvider(args: str) -> None:
-   print("ADD")
-   global ctx, appTracer
-   appTracer.info("adding provider %s" % args.name)
-   #ConfigHandler.loadConfig(appTracer, ctx)
-   instance = {"name": args.name,
-               "type": args.type,
-               "properties": args.properties}
-   if not ConfigHandler.saveInstanceToConfig(appTracer,
-                                             ctx,
-                                             instance):
-      appTracer.critical("adding provider failed")
-   else:
-      appTracer.info("adding provider successful")
-   sys.exit()
+# Delete a single provider instance by name
+def deleteProvider(args: str) -> None:
+   global ctx, tracer
+   tracer.critical("provider delete not yet implemented")
+   return
 
+# Initializes a provider based on its name
+def initProvider(providerName:str, secrets):
+   global tracer
+   tracer.info("initializing provider %s" % providerName)
 
+   contentFullPath = "%s/%s.json" % (PATH_CONTENT, providerName)
+   tracer.debug("providerName=%s, contentFullPath=%s" % (providerName, contentFullPath))
 
+   contentProvider = eval("%sProvider" % providerName)(tracer, contentFullPath, secrets)
 
-
+   tracer.info("successfully loaded content provider %s" % providerName)
+   return contentProvider
 
 # Execute the actual monitoring payload
 def monitor(args: str) -> None:
-   global ctx, appTracer
-   appTracer.info("starting monitor payload")
+   global ctx, tracer
+   tracer.info("starting monitor payload")
    ctx.parseSecrets()
    threads = []
 
@@ -175,14 +235,14 @@ def monitor(args: str) -> None:
    for thread in threads:
       thread.join()
 
-   appTracer.info("monitor payload successfully completed")
+   tracer.info("monitor payload successfully completed")
    return
 
 # prepareUpdate will prepare the resources like keyvault, log analytics etc for the version passed as an argument
 # prepareUpdate needs to be run when a version upgrade requires specific update to the content of the resources
 def prepareUpdate(args: str) -> None:
-    global ctx, appTracer
-    appTracer.info("Preparing for %s" % args.toVersion)
+    global ctx, tracer
+    tracer.info("Preparing for %s" % args.toVersion)
     try:
        updateProfileFactoryObj = updateProfileFactory()
        updateprofile = updateProfileFactoryObj.createUpdateProfile(args.toVersion)
@@ -197,27 +257,10 @@ def ensureDirectoryStructure() -> None:
          if not os.path.exists(path):
             os.makedirs(path)   
       except Exception as e:
-         sys.stderr.write("could not create required directory %s; please check permissions (%s)" % (path, e))
+         sys.stderr.write("could not create required directory %s; please check permissions (%s)" % (path,
+                                                                                                     e))
          sys.exit(ERROR_FILE_PERMISSION_DENIED)
    return
-
-# Initializes a provider based on it's name
-def initProvider(providerName:str, secrets):
-   global appTracer
-   appTracer.info("initializing provider %s" % providerName)
-
-   contentFullPath = "%s/%s.json" % (PATH_CONTENT, providerName)
-   appTracer.debug("providerName=%s, contentFullPath=%s" % (providerName, contentFullPath))
-
-   contentProvider = eval("%sProvider" % providerName)(appTracer, contentFullPath, secrets)
-
-   appTracer.info("successfully loaded content provider %s" % providerName)
-   return contentProvider
-
-def deleteProvider(args: str) -> None:
-   print("DELETE")
-   print(args)
-   sys.exit()
 
 # Main function with argument parser
 def main() -> None:
@@ -228,7 +271,7 @@ def main() -> None:
                      help = "run in verbose mode")
       return
 
-   global ctx, appTracer
+   global ctx, tracer
 
    # Make sure we have all directories in place
    ensureDirectoryStructure()
@@ -299,7 +342,7 @@ def main() -> None:
    onbParser.add_argument("--providers",
                           required = True,
                           type = str,
-                          help = "JSON-formatted list of all provider properties")
+                          help = "JSON-formatted list of all provider instances")
    onbParser.add_argument("--enableCustomerAnalytics",
                           required = False,
                           help = "Setting to enable sending metrics to Microsoft",
@@ -324,14 +367,13 @@ def main() -> None:
    updParser.set_defaults(func = prepareUpdate)
 
    args = parser.parse_args()
-   appTracer = tracing.initTracer(args)
-   ctx = Context(appTracer, args.command)
+   tracer = tracing.initTracer(args)
+   ctx = Context(tracer, args.command)
    args.func(args)
-
    return
 
 ctx = None
-appTracer = None
+tracer = None
 if __name__ == "__main__":
    main()
 

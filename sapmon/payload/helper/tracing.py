@@ -160,9 +160,8 @@ class tracing:
 
    # Initialize customer metrics tracer object
    @staticmethod
-   def initCustomerAnalyticsTracer(
-           tracer: logging.Logger,
-           ctx) -> logging.Logger:
+   def initCustomerAnalyticsTracer(tracer: logging.Logger,
+                                   ctx: Context) -> logging.Logger:
        tracer.info("creating customer metrics tracer object")
        try:
            storageQueue = AzureStorageQueue(tracer,
@@ -184,3 +183,20 @@ class tracing:
        logger.addHandler(customerMetricsLogHandler)
        return logger
 
+   # Ingest metrics into customer analytics
+   @staticmethod
+   def ingestCustomerAnalytics(tracer: logging.Logger,
+                               ctx: Context,
+                               customLog: str,
+                               resultJson: str) -> None:
+      tracer.info("sending customer analytics")
+      results = json.loads(resultJson)
+      for result in results:
+         metrics = {
+            "Type": customLog,
+            "Data": result,
+         }
+         tracer.debug("metrics=%s" % metrics)
+         j = json.dumps(metrics)
+         ctx.analyticsTracer.info(j)
+      return

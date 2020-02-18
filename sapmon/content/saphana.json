@@ -8,13 +8,13 @@
             "frequencySecs": 60,
             "actions": [  
                 {  
-                    "type": "executeSql",
+                    "type": "ExecuteSql",
                     "parameters": {  
                         "sql": "SELECT * FROM SYS.M_LANDSCAPE_HOST_CONFIGURATION ORDER BY HOST_ACTIVE DESC, INDEXSERVER_ACTUAL_ROLE ASC"
                     }
                 },
                 {  
-                    "type": "parseHostConfig"
+                    "type": "ParseHostConfig"
                 }
             ]
         },
@@ -25,7 +25,7 @@
             "frequencySecs": 60,
             "actions": [  
                 {  
-                    "type": "executeSql",
+                    "type": "ExecuteSql",
                     "parameters": {  
                         "isTimeSeries": true,
                         "initialTimespanSecs": 3600,
@@ -41,7 +41,7 @@
             "frequencySecs": 60,
             "actions": [  
                 {  
-                    "type": "executeSql",
+                    "type": "ExecuteSql",
                     "parameters": {  
                         "isTimeSeries": true,
                         "initialTimespanSecs": 31536000,
@@ -57,7 +57,7 @@
             "frequencySecs": 60,
             "actions": [  
                 {  
-                    "type": "probeSqlConnection",
+                    "type": "ProbeSqlConnection",
                     "parameters": {
                         "probeTimeout": 3000
                     }

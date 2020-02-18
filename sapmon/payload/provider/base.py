@@ -24,12 +24,12 @@ class ProviderInstance(ABC):
    
    def __init__(self,
                 tracer: logging.Logger,
-                name: str,
                 providerProperties: Dict[str, str]):
       # This constructor gets called after the child class
       self.tracer = tracer
-      self.name = name
       self.providerProperties = providerProperties
+      self.name = self.providerProperties["name"]
+      self.providerType = self.providerProperties["type"]
       if not self.parseProperties():
          return None
       self.fullName = "%s-%s" % (self.providerType, self.name)
@@ -227,7 +227,7 @@ class ProviderCheck(ABC):
       self.tracer.debug("[%s] actions=%s" % (self.fullName,
                                              self.actions))
       for action in self.actions:
-         methodName = "__%s" % action["type"]
+         methodName = METHODNAME_ACTION % action["type"]
          parameters = action.get("parameters", {})
          self.tracer.debug("[%s] calling action %s" % (self.fullName,
                                                        methodName))

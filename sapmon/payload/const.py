@@ -23,6 +23,11 @@ DEFAULT_CONSOLE_TRACE_LEVEL = logging.INFO
 DEFAULT_FILE_TRACE_LEVEL    = logging.INFO
 DEFAULT_QUEUE_TRACE_LEVEL   = logging.DEBUG
 
+# Config parameters
+CONFIG_SECTION_GLBOAL = "global"
+CLASSNAME_PROVIDER = "%sProviderInstance"
+METHODNAME_ACTION = "_action%s"
+
 # Naming conventions for generated resources
 KEYVAULT_NAMING_CONVENTION               = "sapmon-kv-%s"
 STORAGE_ACCOUNT_NAMING_CONVENTION        = "sapmonsto%s"
@@ -37,5 +42,4 @@ ERROR_GETTING_LOG_CREDENTIALS  = 22
 ERROR_GETTING_HANA_CREDENTIALS = 23
 ERROR_HANA_CONNECTION          = 30
 ERROR_FILE_PERMISSION_DENIED   = 40
-
-availableProviders = {}
+ERROR_ONBOARDING               = 50
