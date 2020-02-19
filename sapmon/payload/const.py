@@ -25,8 +25,9 @@ DEFAULT_QUEUE_TRACE_LEVEL   = logging.DEBUG
 
 # Config parameters
 CONFIG_SECTION_GLBOAL = "global"
-CLASSNAME_PROVIDER = "%sProviderInstance"
-METHODNAME_ACTION = "_action%s"
+CLASSNAME_PROVIDER    = "%sProviderInstance"
+CLASSNAME_CHECK       = "%sProviderCheck"
+METHODNAME_ACTION     = "_action%s"
 
 # Naming conventions for generated resources
 KEYVAULT_NAMING_CONVENTION               = "sapmon-kv-%s"

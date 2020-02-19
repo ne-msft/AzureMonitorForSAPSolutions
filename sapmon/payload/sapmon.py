@@ -19,13 +19,13 @@ import threading
 # Payload modules
 from const import *
 from helper.azure import *
-from helper.context import *
+from helper.context import Context
 from helper.tools import *
 from helper.tracing import *
 from helper.updateprofile import *
 from helper.updatefactory import *
 
-from provider.saphana import *
+from provider.saphana import saphanaProviderInstance
 
 ###############################################################################
 
@@ -174,10 +174,11 @@ def addProvider(args: str = None,
                           "properties": args.properties}
 
    instanceName = providerInstance.get("name", None)
-   tracer.info("adding provider %s to KeyVault" % instanceName)
    providerType = providerInstance.get("type", None)
+   tracer.info("trying to add provider instance (name=%s, type=%s) to KeyVault" % (instanceName,
+                                                                                   providerType))
    providerPropertiesJson = providerInstance.get("properties", None)
-   if not instanceName or not providerType or not providerProperties:
+   if not instanceName or not providerType or not providerPropertiesJson:
       tracer.error("provider incomplete; must have name, type and properties")
       return False
    try:
@@ -185,16 +186,24 @@ def addProvider(args: str = None,
    except json.decoder.JSONDecodeError as e:
       tracer.error("invalid JSON format (%s)" % e)
       return False
-
+   providerProperties["name"] = instanceName
+   providerProperties["type"] = providerType
    # Instantiate provider, so we can run validation check
+   providerClass = CLASSNAME_PROVIDER % providerType
    try:
-      providerClass = CLASSNAME_PROVIDER % p["type"]
       instance = eval(providerClass)(tracer,
-                                         p["properties"])
-   except Exception as e:
-      tracer.critical("could not instantiate %s - wrong provider name? (%s)" % (providerClass,
-                                                                                e))
+                                     providerProperties)
+   except NameError as e:
+      tracer.critical("unknown provider type %s" % providerType)
       return False
+   except Exception as e:
+      tracer.critical("could not instantiate %s (%s)" % (providerClass,
+                                                         e))
+      return False
+   print(instance)
+   if not instance:
+      print("OHOH")
+      sys.exit()
    if not instance.validate():
       tracer.warning("validation check for provider instance %s failed" % instance.fullName)
       return False

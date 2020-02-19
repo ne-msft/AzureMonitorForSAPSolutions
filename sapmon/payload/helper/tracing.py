@@ -124,7 +124,6 @@ class tracing:
    def addQueueLogHandler(
            tracer: logging.Logger,
            ctx) -> None:
-
       # Provide access to custom (payload-specific) fields
       oldFactory = logging.getLogRecordFactory()
       def recordFactory(*args, **kwargs):
@@ -161,7 +160,7 @@ class tracing:
    # Initialize customer metrics tracer object
    @staticmethod
    def initCustomerAnalyticsTracer(tracer: logging.Logger,
-                                   ctx: Context) -> logging.Logger:
+                                   ctx) -> logging.Logger:
        tracer.info("creating customer metrics tracer object")
        try:
            storageQueue = AzureStorageQueue(tracer,
@@ -186,7 +185,7 @@ class tracing:
    # Ingest metrics into customer analytics
    @staticmethod
    def ingestCustomerAnalytics(tracer: logging.Logger,
-                               ctx: Context,
+                               ctx,
                                customLog: str,
                                resultJson: str) -> None:
       tracer.info("sending customer analytics")

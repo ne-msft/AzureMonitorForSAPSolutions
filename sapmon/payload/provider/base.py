@@ -8,6 +8,7 @@ from typing import Callable, Dict, List, Optional
 # Payload modules
 from const import *
 from helper.tools import *
+from provider.saphana import saphanaProviderCheck
 
 ###############################################################################
 
@@ -27,14 +28,15 @@ class ProviderInstance(ABC):
                 providerProperties: Dict[str, str]):
       # This constructor gets called after the child class
       self.tracer = tracer
+      self.tracer.error(providerProperties)
       self.providerProperties = providerProperties
       self.name = self.providerProperties["name"]
       self.providerType = self.providerProperties["type"]
-      if not self.parseProperties():
-         return None
       self.fullName = "%s-%s" % (self.providerType, self.name)
+      if not self.parseProperties():
+         raise ValueError("failed to parse properties of the provider instance")
       if not self.initContent():
-         return None
+         raise Exception("failed to initialize content")
       self.readState()
 
    # Read provider content file
@@ -67,11 +69,14 @@ class ProviderInstance(ABC):
       checks = jsonData.get("checks", [])
       for checkOptions in checks:
          try:
-            checkType = "%sCheck" % self.providerType
+            checkType = CLASSNAME_CHECK % self.providerType
             self.tracer.info("[%s] instantiating check of type %s" % (self.fullName,
                                                                       checkType))
             self.tracer.debug("[%s] checkOptions=%s" % (self.fullName,
                                                         checkOptions))
+            print("??? trying to instantiate saphanaProviderCheck")
+            c = saphanaProviderCheck()
+            print("!!! done")
             check = eval(checkType)(self, **checkOptions)
             self.checks.append(check)
          except Exception as e:

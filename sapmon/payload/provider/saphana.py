@@ -7,11 +7,12 @@ import time
 # Payload modules
 from const import *
 from helper.tools import *
-from provider.base import *
+from provider.base import ProviderInstance
 from typing import Dict, List
 
 # SAP HANA modules
 from hdbcli import dbapi
+import pyhdbcli
 
 ###############################################################################
 
@@ -33,10 +34,9 @@ class saphanaProviderInstance(ProviderInstance):
                 tracer: logging.Logger,
                 providerProperties: Dict[str, str],
                 **kwargs):
-      return super().__init__(tracer,
-                              name,
-                              providerProperties,
-                              **kwargs)
+      super().__init__(tracer,
+                       providerProperties,
+                       **kwargs)
 
    # Parse provider properties and fetch DB password from KeyVault, if necessary
    def parseProperties(self):
@@ -90,20 +90,20 @@ class saphanaProviderInstance(ProviderInstance):
 
    # Validate that we can establish a HANA connection and run queries
    def validate(self) -> bool:
-      tracer.info("connecting to HANA instance to run test query. Hostname: %s" % self.hanaHostname)
+      self.tracer.info("connecting to HANA instance to run test query. Hostname: %s" % self.hanaHostname)
 
       # Try to establish a HANA connection using the details provided by the user
       try:
          connection = self._establishHanaConnectionToHost()
          cursor = connection.cursor()
          if not connection.isconnected():
-            tracer.error("[%s] unable to validate connection status" % self.fullName)
+            self.tracer.error("[%s] unable to validate connection status" % self.fullName)
             return False
       except Exception as e:
-         tracer.error("[%s] could not establish HANA connection %s:%d (%s)" % (self.fullName,
-                                                                               self.hanaHostname,
-                                                                               self.hanaDbSqlPort,
-                                                                               e))
+         self.tracer.error("[%s] could not establish HANA connection %s:%d (%s)" % (self.fullName,
+                                                                                    self.hanaHostname,
+                                                                                    self.hanaDbSqlPort,
+                                                                                    e))
          return False
 
       # Try to run a query against the services view
@@ -112,15 +112,19 @@ class saphanaProviderInstance(ProviderInstance):
          cursor.execute("SELECT * FROM M_SERVICES")
          connection.close()
       except Exception as e:
-         tracer.error("[%s] could run validation query (%s)" % (self.fullName, e))
+         self.tracer.error("[%s] could run validation query (%s)" % (self.fullName, e))
          return False
       return True
 
    def _establishHanaConnectionToHost(self,
-                                      hostname = self.hanaHostname,
-                                      port = self.hanaDbSqlPort,
-                                      timeout = TIMEOUT_HANA_SECS):
-      return dbapi.connect(address = host,
+                                      hostname: str = None,
+                                      port: int = None,
+                                      timeout: int = TIMEOUT_HANA_SECS) -> pyhdbcli.Connection:
+      if not hostname:
+         hostname = self.hanaHostname
+      if not port:
+         port = self.hanaDbSqlPort
+      return dbapi.connect(address = hostname,
                            port = self.hanaDbSqlPort,
                            user = self.hanaDbUsername,
                            password = self.hanaDbPassword,
@@ -130,12 +134,12 @@ class saphanaProviderInstance(ProviderInstance):
 ###############################################################################
 
 # Implements a SAP HANA-specific monitoring check
-class saphanaCheck(ProviderCheck):
+class saphanaProviderCheck(ProviderCheck):
    lastResult = None
    colTimeGenerated = None
    
    def __init__(self,
-                provider: SapmonContentProvider,
+                provider: ProviderInstance,
                 **kwargs):
       return super().__init__(provider, **kwargs)
 

@@ -1,6 +1,6 @@
 import json
 from helper.tools import *
-from provider.saphana import HanaSecretName
+# from provider.saphana import HanaSecretName
 from helper.updateprofile import updateProfile
 from helper.context import Context
 from helper.azure import *
