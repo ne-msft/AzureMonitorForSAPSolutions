@@ -7,7 +7,7 @@ import time
 # Payload modules
 from const import *
 from helper.tools import *
-from provider.base import ProviderInstance
+from provider.base import ProviderInstance, ProviderCheck
 from typing import Dict, List
 
 # SAP HANA modules
@@ -32,10 +32,12 @@ class saphanaProviderInstance(ProviderInstance):
 
    def __init__(self,
                 tracer: logging.Logger,
-                providerProperties: Dict[str, str],
+                providerInstance: Dict[str, str],
+                skipContent: bool = False,
                 **kwargs):
       super().__init__(tracer,
-                       providerProperties,
+                       providerInstance,
+                       skipContent,
                        **kwargs)
 
    # Parse provider properties and fetch DB password from KeyVault, if necessary
@@ -90,7 +92,8 @@ class saphanaProviderInstance(ProviderInstance):
 
    # Validate that we can establish a HANA connection and run queries
    def validate(self) -> bool:
-      self.tracer.info("connecting to HANA instance to run test query. Hostname: %s" % self.hanaHostname)
+      self.tracer.info("connecting to HANA instance (%s:%d) to run test query" % (self.hanaHostname,
+                                                                                  self.hanaDbSqlPort))
 
       # Try to establish a HANA connection using the details provided by the user
       try:
@@ -124,6 +127,8 @@ class saphanaProviderInstance(ProviderInstance):
          hostname = self.hanaHostname
       if not port:
          port = self.hanaDbSqlPort
+      print(self.hanaDbUsername)
+      print(self.hanaDbPassword)
       return dbapi.connect(address = hostname,
                            port = self.hanaDbSqlPort,
                            user = self.hanaDbUsername,

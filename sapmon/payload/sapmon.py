@@ -99,9 +99,8 @@ def loadConfig() -> bool:
                      "name": instanceName,
                      "properties": instanceProperties}
          instances.append(instance)
-
-   print("globalParams = %s" % globalParams)
-   print("instances = %s" % instances)
+   #print("globalParams = %s" % globalParams)
+   #print("instances = %s" % instances)
    ctx.globalParams = globalParams
    ctx.instances = instances
    if globalParams == {} or len(instances) == 0:
@@ -118,17 +117,17 @@ def saveInstanceToConfig(instance: Dict[str, str]) -> bool:
       tracer.error("instance to save is missing name, type or properties")
       return False
    tracer.info("saving instance %s to customer KeyVault" % instanceName)
-   if not providerType in ctx.availableProviders:
-      tracer.error("unknown provider type %s (available types: %s)" % (providerType, list(ctx.availableProviders.keys())))
-      return False
+#   if not providerType in ctx.availableProviders:
+#      tracer.error("unknown provider type %s (available types: %s)" % (providerType, list(ctx.availableProviders.keys())))
+#      return False
    try:
       secretValue = json.dumps(instanceProperties)
    except json.encoder.JSONEncodeError as e:
       tracer.error("cannot JSON encode instance properties (%s)" % e)
       return False   
    secretName = "%s-%s" % (providerType, instanceName)
-   return ctx.azKv.setSecret(secretName,
-                             secretValue)
+   result = ctx.azKv.setSecret(secretName, secretValue)
+   return result
 
 # Store credentials in the customer KeyVault
 # (To be executed as custom script upon initial deployment of collector VM)
@@ -192,7 +191,8 @@ def addProvider(args: str = None,
    providerClass = CLASSNAME_PROVIDER % providerType
    try:
       instance = eval(providerClass)(tracer,
-                                     providerProperties)
+                                     providerInstance,
+ 	                             skipContent=True)
    except NameError as e:
       tracer.critical("unknown provider type %s" % providerType)
       return False
@@ -200,16 +200,14 @@ def addProvider(args: str = None,
       tracer.critical("could not instantiate %s (%s)" % (providerClass,
                                                          e))
       return False
-   print(instance)
-   if not instance:
-      print("OHOH")
-      sys.exit()
    if not instance.validate():
       tracer.warning("validation check for provider instance %s failed" % instance.fullName)
       return False
-   if not saveInstanceToConfig(p):
+   print(providerProperties)
+   if not saveInstanceToConfig(providerInstance):
       tracer.error("could not save provider instance %s to KeyVault" % instance.fullName)
       return False
+   tracer.info("successfully added provider instance %s to KeyVault" % instance.fullName)
    return True
 
 # Delete a single provider instance by name

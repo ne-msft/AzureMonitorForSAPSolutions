@@ -8,7 +8,7 @@ from typing import Callable, Dict, List, Optional
 # Payload modules
 from const import *
 from helper.tools import *
-from provider.saphana import saphanaProviderCheck
+#from provider.saphana import saphanaProviderCheck
 
 ###############################################################################
 
@@ -25,24 +25,25 @@ class ProviderInstance(ABC):
    
    def __init__(self,
                 tracer: logging.Logger,
-                providerProperties: Dict[str, str]):
+                providerInstance: Dict[str, str],
+                skipContent: bool = False):
       # This constructor gets called after the child class
       self.tracer = tracer
-      self.tracer.error(providerProperties)
-      self.providerProperties = providerProperties
-      self.name = self.providerProperties["name"]
-      self.providerType = self.providerProperties["type"]
+      self.providerProperties = json.loads(providerInstance["properties"])
+      self.name = providerInstance["name"]
+      self.providerType = providerInstance["type"]
       self.fullName = "%s-%s" % (self.providerType, self.name)
       if not self.parseProperties():
          raise ValueError("failed to parse properties of the provider instance")
-      if not self.initContent():
+      if not skipContent and not self.initContent():
          raise Exception("failed to initialize content")
       self.readState()
 
    # Read provider content file
    def initContent(self) -> bool:
-      self.tracer.info("[%s] initializing content for provider instance" % self.fullName)
+      from provider.saphana import saphanaProviderCheck
 
+      self.tracer.info("[%s] initializing content for provider instance" % self.fullName)
       try:
          filename = os.path.join(PATH_CONTENT, "%s.json" % self.providerType)
          self.tracer.debug("filename=%s" % filename)
@@ -69,14 +70,13 @@ class ProviderInstance(ABC):
       checks = jsonData.get("checks", [])
       for checkOptions in checks:
          try:
+            # TODO(tniek): Refactor this by having children ProviderInstance classes
+            # (e.g. saphanaProviderInstance) pass their respective ProviderCheck class
             checkType = CLASSNAME_CHECK % self.providerType
             self.tracer.info("[%s] instantiating check of type %s" % (self.fullName,
                                                                       checkType))
             self.tracer.debug("[%s] checkOptions=%s" % (self.fullName,
                                                         checkOptions))
-            print("??? trying to instantiate saphanaProviderCheck")
-            c = saphanaProviderCheck()
-            print("!!! done")
             check = eval(checkType)(self, **checkOptions)
             self.checks.append(check)
          except Exception as e:
@@ -200,7 +200,7 @@ class ProviderCheck(ABC):
          "lastRunLocal": None
       }
       self.fullName = "%s.%s" % (self.providerInstance.fullName, self.name)
-      self.tracer = provider.tracer
+      self.tracer = providerInstance.tracer
 
    # Return if this check is enabled or not
    def isEnabled(self) -> bool:
