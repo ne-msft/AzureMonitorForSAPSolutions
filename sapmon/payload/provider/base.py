@@ -29,7 +29,7 @@ class ProviderInstance(ABC):
                 skipContent: bool = False):
       # This constructor gets called after the child class
       self.tracer = tracer
-      self.providerProperties = json.loads(providerInstance["properties"])
+      self.providerProperties = providerInstance["properties"]
       self.name = providerInstance["name"]
       self.providerType = providerInstance["type"]
       self.fullName = "%s-%s" % (self.providerType, self.name)
@@ -68,6 +68,7 @@ class ProviderInstance(ABC):
 
       # Parse and instantiate the individual checks of the provider
       checks = jsonData.get("checks", [])
+      self.checks = []
       for checkOptions in checks:
          try:
             # TODO(tniek): Refactor this by having children ProviderInstance classes
@@ -204,7 +205,7 @@ class ProviderCheck(ABC):
 
    # Return if this check is enabled or not
    def isEnabled(self) -> bool:
-      self.tracer.info("[%s] verifying if check enabled" % self.fullName)
+      self.tracer.debug("[%s] verifying if check is enabled" % self.fullName)
       if not self.state["isEnabled"]:
          self.tracer.info("[%s] check is currently not enabled, skipping" % self.fullName)
          return False
@@ -214,7 +215,7 @@ class ProviderCheck(ABC):
    def isDue(self) -> bool:
       # lastRunLocal = last execution time on collector VM
       # lastRunServer (used in provider) = last execution time on (HANA) server
-      self.tracer.info("[%s] verifying if check is due to be run" % self.fullName)
+      self.tracer.debug("[%s] verifying if check is due to be run" % self.fullName)
       lastRunLocal = self.state["lastRunLocal"]
       self.tracer.debug("[%s] lastRunLocal=%s; frequencySecs=%d; currentLocal=%s" % (self.fullName,
                                                                                      lastRunLocal,
@@ -222,7 +223,7 @@ class ProviderCheck(ABC):
                                                                                      datetime.utcnow()))
       if lastRunLocal and \
          lastRunLocal + timedelta(seconds = self.frequencySecs) > datetime.utcnow():
-         self.tracer.info("[%s] check is not due yet, skipping" % self.fullNname)
+         self.tracer.info("[%s] check is not due yet, skipping" % self.fullName)
          return False
       return True
 
@@ -255,7 +256,7 @@ class ProviderCheck(ABC):
          # Iterate through all rows of the last query result
          for r in resultRows:
             logItem = {
-               "CONTENT_VERSION": self.providerInstance.version,
+               "CONTENT_VERSION": self.providerInstance.contentVersion,
                "SAPMON_VERSION": PAYLOAD_VERSION,
                "PROVIDER_INSTANCE": self.providerInstance.name,
             }

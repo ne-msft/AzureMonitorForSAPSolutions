@@ -198,9 +198,7 @@ x-ms-date:%s
       if colTimeGenerated:
         headers["time-generated-field"] = colTimeGenerated
 
-      self.tracer.debug("data=%s" % jsonData)
       response = None
-
       # Ingest the actual content via Data Collector API
       try:
          response = REST.sendRequest(self.tracer,

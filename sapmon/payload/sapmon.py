@@ -15,6 +15,7 @@ import os
 import re
 import sys
 import threading
+import traceback
 
 # Payload modules
 from const import *
@@ -35,8 +36,8 @@ class ProviderInstanceThread(threading.Thread):
       self.providerInstance = providerInstance
 
    def run(self):
-      global ctx, appTracer
-      for check in self.provider.checks:
+      global ctx, tracer
+      for check in self.providerInstance.checks:
          tracer.info("starting check %s" % (check.fullName))
 
          # Skip this check if it's not enabled or not due yet
@@ -61,6 +62,7 @@ class ProviderInstanceThread(threading.Thread):
                                              ctx,
                                              check.customLog,
                                              resultJson)
+         tracer.info("finished check %s" % (check.fullName))
       return
 
 ###############################################################################
@@ -70,20 +72,18 @@ def loadConfig() -> bool:
    global ctx, tracer
    tracer.info("loading config from KeyVault")
 
-   globalParams = {}
-   instances = []
-
    secrets = ctx.azKv.getCurrentSecrets()
    for secretName in secrets.keys():
-      tracer.debug("parsing secret %s" % secretName)
+      tracer.debug("parsing KeyVault secret %s" % secretName)
       secretValue = secrets[secretName]
       try:
-         instanceProperties = json.loads(secretValue)
+         providerProperties = json.loads(secretValue)
       except json.decoder.JSONDecodeError as e:
-         tracer.error("invalid JSON format for secret %s=%s (%s)" % (secretName, secretValue, e))
+         tracer.error("invalid JSON format for secret %s (%s)" % (secretName,
+                                                                  e))
          continue
       if secretName == CONFIG_SECTION_GLOBAL:
-         globalParams = instanceProperties
+         ctx.globalParams = providerProperties
       else:
          parts = secretName.split("-")
          if len(parts) != 2:
@@ -91,19 +91,22 @@ def loadConfig() -> bool:
             continue
          providerType, instanceName = parts[0], parts[1]
          providerClass = CLASSNAME_PROVIDER % providerType
-         if not providerClass in dir():
-            tracer.error("unknown provider type %s" % providerType)
-            continue
-         provider = ctx.availableProviders[providerType]
          instance = {"type": providerType,
                      "name": instanceName,
-                     "properties": instanceProperties}
-         instances.append(instance)
-   #print("globalParams = %s" % globalParams)
-   #print("instances = %s" % instances)
-   ctx.globalParams = globalParams
-   ctx.instances = instances
-   if globalParams == {} or len(instances) == 0:
+                     "properties": providerProperties}
+         try:
+            providerInstance = eval(providerClass)(tracer,
+                                                   instance,
+                                                   skipContent=False)
+         except NameError as e:
+            tracer.error("unknown provider type %s" % providerType)
+            continue
+         except Exception as e:
+            tracer.error("could not validate provider instance %s (%s)" % (instanceName,
+                                                                           e))
+            continue
+         ctx.instances.append(providerInstance)
+   if ctx.globalParams == {} or len(ctx.instances) == 0:
       return False
    return True
 
@@ -112,16 +115,13 @@ def saveInstanceToConfig(instance: Dict[str, str]) -> bool:
    global ctx, tracer
    instanceName = instance.get("name", None)
    providerType = instance.get("type", None)
-   instanceProperties = instance.get("properties", None)
-   if not instanceName or not providerType or not instanceProperties:
+   providerProperties = instance.get("properties", None)
+   if not instanceName or not providerType or not providerProperties:
       tracer.error("instance to save is missing name, type or properties")
       return False
    tracer.info("saving instance %s to customer KeyVault" % instanceName)
-#   if not providerType in ctx.availableProviders:
-#      tracer.error("unknown provider type %s (available types: %s)" % (providerType, list(ctx.availableProviders.keys())))
-#      return False
    try:
-      secretValue = json.dumps(instanceProperties)
+      secretValue = json.dumps(providerProperties)
    except json.encoder.JSONEncodeError as e:
       tracer.error("cannot JSON encode instance properties (%s)" % e)
       return False   
@@ -169,24 +169,22 @@ def addProvider(args: str = None,
    # If triggered directly via command-line (sapmon.py provider add)
    if args:
       providerInstance = {"name": args.name,
-                          "type": args.type,
-                          "properties": args.properties}
+                          "type": args.type}
+      try:
+         providerInstance["properties"] = json.loads(args.properties)
+      except json.decoder.JSONDecodeError as e:
+         tracer.error("invalid JSON format (%s)" % e)
+         return False
 
    instanceName = providerInstance.get("name", None)
    providerType = providerInstance.get("type", None)
+   providerProperties = providerInstance.get("properties", None)
    tracer.info("trying to add provider instance (name=%s, type=%s) to KeyVault" % (instanceName,
                                                                                    providerType))
-   providerPropertiesJson = providerInstance.get("properties", None)
-   if not instanceName or not providerType or not providerPropertiesJson:
+   if not instanceName or not providerType or not providerProperties:
       tracer.error("provider incomplete; must have name, type and properties")
       return False
-   try:
-      providerProperties = json.loads(providerPropertiesJson)
-   except json.decoder.JSONDecodeError as e:
-      tracer.error("invalid JSON format (%s)" % e)
-      return False
-   providerProperties["name"] = instanceName
-   providerProperties["type"] = providerType
+
    # Instantiate provider, so we can run validation check
    providerClass = CLASSNAME_PROVIDER % providerType
    try:
@@ -199,11 +197,11 @@ def addProvider(args: str = None,
    except Exception as e:
       tracer.critical("could not instantiate %s (%s)" % (providerClass,
                                                          e))
+      traceback.print_exc()
       return False
    if not instance.validate():
       tracer.warning("validation check for provider instance %s failed" % instance.fullName)
       return False
-   print(providerProperties)
    if not saveInstanceToConfig(providerInstance):
       tracer.error("could not save provider instance %s to KeyVault" % instance.fullName)
       return False
@@ -225,7 +223,6 @@ def monitor(args: str) -> None:
    if not loadConfig():
       tracer.critical("failed to load config from KeyVault")
       sys.exit(ERROR_LOADING_CONFIG)
-
    logAnalyticsWorkspaceId = ctx.globalParams.get("LogAnalyticsWorkspaceId", None)
    logAnalyticsSharedKey = ctx.globalParams.get("LogAnalyticsSharedKey", None)
    if not logAnalyticsWorkspaceId or not logAnalyticsSharedKey:
@@ -234,23 +231,8 @@ def monitor(args: str) -> None:
    ctx.azLa = AzureLogAnalytics(tracer,
                                 logAnalyticsWorkspaceId,
                                 logAnalyticsSharedKey)
-
    for i in ctx.instances:
-      instanceName = i.get("name", None)
-      providerType = i.get("type", None)
-      providerProperties = i.get("properties", None)
-      if not instanceName or not providerType or not providerProperties:
-         tracer.critical("provider is missing name (%s), type (%s) or properties" % (instanceName,
-                                                                                     providerType))
-      try:
-         providerClass = CLASSNAME_PROVIDER % providerType
-         instance = eval(providerClass)(tracer,
-                                        providerProperties)
-      except Exception as e:
-         tracer.critical("could not instantiate %s - wrong provider name? (%s)" % (providerClass,
-                                                                                   e))
-         continue
-      thread = ProviderInstanceThread(instance)
+      thread = ProviderInstanceThread(i)
       thread.start()
       threads.append(thread)
 

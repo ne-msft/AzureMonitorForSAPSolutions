@@ -127,10 +127,8 @@ class saphanaProviderInstance(ProviderInstance):
          hostname = self.hanaHostname
       if not port:
          port = self.hanaDbSqlPort
-      print(self.hanaDbUsername)
-      print(self.hanaDbPassword)
       return dbapi.connect(address = hostname,
-                           port = self.hanaDbSqlPort,
+                           port = port,
                            user = self.hanaDbUsername,
                            password = self.hanaDbPassword,
                            timeout = timeout,
@@ -153,14 +151,14 @@ class saphanaProviderCheck(ProviderCheck):
       self.tracer.info("[%s] establishing connection with HANA instance" % self.fullName)
 
       # Check if HANA host config has been retrieved from DB yet
-      if "hostConfig" not in self.provider.state:
+      if "hostConfig" not in self.providerInstance.state:
          # Host config has not been retrieved yet; our only candidate is the one provided by user
          self.tracer.debug("[%s] no host config has been persisted yet, using user-provided host" % self.fullName)
          hostsToTry = [self.providerInstance.hanaHostname]
       else:
          # Host config has already been retrieved; rank the hosts to compile a list of hosts to try
          self.tracer.debug("[%s] host config has been persisted to provider, deriving prioritized host list" % self.fullName)
-         hostConfig = self.provider.state["hostConfig"]
+         hostConfig = self.providerInstance.state["hostConfig"]
          hostsToTry = [h["host"] for h in hostConfig]
 
       # Iterate through the prioritized list of hosts to try
@@ -233,6 +231,9 @@ class saphanaProviderCheck(ProviderCheck):
    def _calculateResultHash(self,
                             resultRows: List[List[str]]) -> str:
       self.tracer.info("[%s] calculating hash of SQL query result" % self.fullName)
+      if len(resultRows) == 0:
+         self.tracer.debug("[%s] result set is empty" % self.fullName)
+         return None
       resultHash = None
       try:
          resultHash = hashlib.md5(str(resultRows).encode("utf-8")).hexdigest()
@@ -336,7 +337,7 @@ class saphanaProviderCheck(ProviderCheck):
             "role": r["INDEXSERVER_ACTUAL_ROLE"]
             }
          hosts.append(host)
-      self.provider.state["hostConfig"] = hosts
+      self.providerInstance.state["hostConfig"] = hosts
       self.tracer.debug("hosts=%s" % hosts)
       return True
 
@@ -353,12 +354,12 @@ class saphanaProviderCheck(ProviderCheck):
       self.colTimeGenerated = COL_LOCAL_UTC
 
       # This check requires the HANA host configuration to be run first
-      if "hostConfig" not in self.provider.state:
+      if "hostConfig" not in self.providerInstance.state:
          self.tracer.error("[%s] HANA host config check has not been executed yet" % self.fullName)
          return False
 
       # Iterate through all hosts (alphabetical order) from the host config
-      hostConfig = self.provider.state["hostConfig"]
+      hostConfig = self.providerInstance.state["hostConfig"]
       hostsToProbe = [h["host"] for h in hostConfig]
       probeResults = []
       for host in sorted(hostsToProbe):
@@ -366,40 +367,52 @@ class saphanaProviderCheck(ProviderCheck):
          success = False
 
          # Given the SQL port (3xxyy), calculate hdbnameserver port (3xx01)
-         portNameserver = int(str(self.providerInstance.hanaDbSqlPort)[:-2] + "01")
+         portSQL = self.providerInstance.hanaDbSqlPort
+         portNameserver = int(str(portSQL)[:-2] + "01")
 
-         # Probe connection to the hdbnameserver of a particular node
-         # This workaround is required, since in a n+m scale-out scenario (with m>0),
-         # the stand-by nodes will have no hdbindexserver running, hence SQL connection
-         # will fail. Probing hdbnameserver is a safer option to detect connectivity.
-         startTime = time.time()
-         try:
-            self.providerInstance._establishHanaConnectionToHost(hostname = host,
-                                                                 port = portNameserver,
-                                                                 timeout = probeTimeout)
-         except Exception as e:
-            # We know that SQL connections to hdbnameserver will fail
-            # Let's determine if the HANA landscape is up, based on the error code
-            msg = e.errortext.lower()
-            if "89008" in msg or "socket closed" in msg:
-               latency = (time.time() - startTime) * 1000
-               success = True
-               self.tracer.debug("[%s] received expected error probing HANA nameserver %s:%d (%s" % (self.fullName,
-                                                                                                     host,
-                                                                                                     portNameserver,
-                                                                                                     e))
-            elif "89001" in msg or "cannot resolve host name" in msg \
-            or "89006" in msg or "connection refused" in msg \
-            or "timeout expired" in msg:
-              self.tracer.error("[%s] HANA nameserver %s:%d is not responding to probe (%s)" % (self.fullName,
-                                                                                                host,
-                                                                                                portNameserver,
-                                                                                                e))
-            else:
-              self.tracer.error("[%s] unexpected error when probing HANA nameserver %s:%d (%s)" % (self.fullName,
+         for port in (portSQL, portNameserver):
+            # Probe connection to Indexserver (SQL) and Nameserver of a particular node
+            # This Nameserver workaround is required, since in a n+m scale-out scenario (with m>0),
+            # stand-by nodes will have no hdbindexserver running, hence SQL connection will fail.
+            startTime = time.time()
+            try:
+               self.tracer.debug("[%s] probing HANA connection at %s:%d" % (self.fullName,
+                                                                            host,
+                                                                            port))
+               connection = self.providerInstance._establishHanaConnectionToHost(hostname = host,
+                                                                                 port = port,
+                                                                                 timeout = probeTimeout)
+               if connection.isconnected():
+                  self.tracer.debug("[%s] HANA connection successfully established" % self.fullName)
+                  success = True
+                  connection.close()
+            except Exception as e:
+               # We know that SQL connections to hdbnameserver will fail
+               # Let's determine if the HANA landscape is up, based on the error code
+               msg = e.errortext.lower()
+               print(msg)
+               if "89008" in msg or "socket closed" in msg:
+                  success = True
+                  self.tracer.debug("[%s] received expected error probing HANA nameserver %s:%d (%s" % (self.fullName,
+                                                                                                        host,
+                                                                                                        portNameserver,
+                                                                                                        e))
+               elif "89001" in msg or "cannot resolve host name" in msg \
+               or "89006" in msg or "connection refused" in msg \
+               or "timeout expired" in msg:
+                 self.tracer.error("[%s] HANA nameserver %s:%d is not responding to probe (%s)" % (self.fullName,
                                                                                                    host,
                                                                                                    portNameserver,
                                                                                                    e))
+               else:
+                 self.tracer.error("[%s] unexpected error when probing HANA nameserver %s:%d (%s)" % (self.fullName,
+                                                                                                      host,
+                                                                                                      portNameserver,
+                                                                                                      e))
+            if success:
+               latency = (time.time() - startTime) * 1000
+               break
+
          # Build probing result tuple with current local time
          probeResults.append(
                [

@@ -170,7 +170,7 @@ class tracing:
                                             resourceGroup = ctx.vmInstance["resourceGroupName"],
                                             queueName = CUSTOMER_METRICS_QUEUE_NAMING_CONVENTION % ctx.sapmonId)
            storageKey = storageQueue.getAccessKey()
-           customerMetricsLogHandler = QueueStorageHandler(account_name=storageQueue.accountName,
+           customerMetricsLogHandler = QueueStorageHandler(account_name = storageQueue.accountName,
                                                            account_key = storageKey,
                                                            protocol = "https",
                                                            queue = storageQueue.name)
@@ -195,7 +195,6 @@ class tracing:
             "Type": customLog,
             "Data": result,
          }
-         tracer.debug("metrics=%s" % metrics)
          j = json.dumps(metrics)
-         ctx.analyticsTracer.info(j)
+         ctx.analyticsTracer.debug(j)
       return
