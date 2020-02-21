@@ -137,9 +137,9 @@ def onboard(args: str) -> None:
    error = False
 
    # Update global parameters and save them to KeyVault
-   ctx.globalParams = {"LogAnalyticsWorkspaceId": args.logAnalyticsWorkspaceId,
-                       "LogAnalyticsSharedKey": args.logAnalyticsSharedKey,
-                       "EnableCustomerAnalytics": args.enableCustomerAnalytics}
+   ctx.globalParams = {"logAnalyticsWorkspaceId": args.logAnalyticsWorkspaceId,
+                       "logAnalyticsSharedKey": args.logAnalyticsSharedKey,
+                       "enableCustomerAnalytics": args.enableCustomerAnalytics}
    if not ctx.azKv.setSecret(CONFIG_SECTION_GLOBAL,
                              json.dumps(ctx.globalParams)):
       tracer.critical("could not save global config to KeyVault")
@@ -223,10 +223,10 @@ def monitor(args: str) -> None:
    if not loadConfig():
       tracer.critical("failed to load config from KeyVault")
       sys.exit(ERROR_LOADING_CONFIG)
-   logAnalyticsWorkspaceId = ctx.globalParams.get("LogAnalyticsWorkspaceId", None)
-   logAnalyticsSharedKey = ctx.globalParams.get("LogAnalyticsSharedKey", None)
+   logAnalyticsWorkspaceId = ctx.globalParams.get("logAnalyticsWorkspaceId", None)
+   logAnalyticsSharedKey = ctx.globalParams.get("logAnalyticsSharedKey", None)
    if not logAnalyticsWorkspaceId or not logAnalyticsSharedKey:
-      tracer.critical("global config must contain LogAnalyticsWorkspaceId and LogAnalyticsSharedKey")
+      tracer.critical("global config must contain logAnalyticsWorkspaceId and logAnalyticsSharedKey")
       sys.exit(ERROR_GETTING_LOG_CREDENTIALS)
    ctx.azLa = AzureLogAnalytics(tracer,
                                 logAnalyticsWorkspaceId,
@@ -350,7 +350,7 @@ def main() -> None:
    onbParser.add_argument("--enableCustomerAnalytics",
                           required = False,
                           help = "Setting to enable sending metrics to Microsoft",
-                          action="store_true",
+                          action = "store_true",
                           dest="enableCustomerAnalytics")
    addVerboseToParser(onbParser)
    onbParser.set_defaults(enableCustomerAnalytics=False)
