@@ -125,7 +125,7 @@ def saveInstanceToConfig(instance: Dict[str, str]) -> bool:
    except json.encoder.JSONEncodeError as e:
       tracer.error("cannot JSON encode instance properties (%s)" % e)
       return False   
-   secretName = "%s-%s" % (providerType, instanceName)
+   secretName = KV_SECRET_FORMAT % (providerType, instanceName)
    result = ctx.azKv.setSecret(secretName, secretValue)
    return result
 

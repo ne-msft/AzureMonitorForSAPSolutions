@@ -8,7 +8,6 @@ from typing import Callable, Dict, List, Optional
 # Payload modules
 from const import *
 from helper.tools import *
-#from provider.saphana import saphanaProviderCheck
 
 ###############################################################################
 

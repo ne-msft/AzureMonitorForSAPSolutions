@@ -28,6 +28,7 @@ CONFIG_SECTION_GLOBAL = "global"
 CLASSNAME_PROVIDER    = "%sProviderInstance"
 CLASSNAME_CHECK       = "%sProviderCheck"
 METHODNAME_ACTION     = "_action%s"
+KV_SECRET_FORMAT      = "%s-%s"
 
 # Naming conventions for generated resources
 KEYVAULT_NAMING_CONVENTION               = "sapmon-kv-%s"

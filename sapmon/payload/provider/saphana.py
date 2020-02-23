@@ -389,8 +389,8 @@ class saphanaProviderCheck(ProviderCheck):
             except Exception as e:
                # We know that SQL connections to hdbnameserver will fail
                # Let's determine if the HANA landscape is up, based on the error code
+               # (Note: this applies to scale-out landscapes with n+m nodes only)
                msg = e.errortext.lower()
-               print(msg)
                if "89008" in msg or "socket closed" in msg:
                   success = True
                   self.tracer.debug("[%s] received expected error probing HANA nameserver %s:%d (%s" % (self.fullName,
