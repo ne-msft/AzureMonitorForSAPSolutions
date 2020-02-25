@@ -86,7 +86,7 @@ def loadConfig() -> bool:
          ctx.globalParams = providerProperties
       else:
          parts = secretName.split("-")
-         if len(parts) != 2:
+         if len(parts) < 2:
             tracer.error("invalid secret name (should be: provider-name): %s" % (secretName))
             continue
          providerType, instanceName = parts[0], parts[1]
