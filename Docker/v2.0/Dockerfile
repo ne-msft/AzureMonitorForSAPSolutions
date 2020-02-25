@@ -1,4 +1,4 @@
-FROM python:3.4-slim
+FROM python:3.7-slim
 
 ARG RELEASE
 RUN apt-get update -y
