@@ -19,7 +19,7 @@ TIME_FORMAT_JSON          = "%Y-%m-%dT%H:%M:%S.%fZ"
 TIME_FORMAT_HANA          = "%Y-%m-%d %H:%M:%S.%f"
 
 # Trace levels
-DEFAULT_CONSOLE_TRACE_LEVEL = logging.INFO
+DEFAULT_CONSOLE_TRACE_LEVEL = logging.DEBUG
 DEFAULT_FILE_TRACE_LEVEL    = logging.INFO
 DEFAULT_QUEUE_TRACE_LEVEL   = logging.DEBUG
 
