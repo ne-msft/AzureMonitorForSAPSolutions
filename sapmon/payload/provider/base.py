@@ -32,6 +32,7 @@ class ProviderInstance(ABC):
       self.name = providerInstance["name"]
       self.providerType = providerInstance["type"]
       self.fullName = "%s-%s" % (self.providerType, self.name)
+      self.state = {}
       if not self.parseProperties():
          raise ValueError("failed to parse properties of the provider instance")
       if not skipContent and not self.initContent():
