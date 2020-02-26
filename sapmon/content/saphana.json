@@ -1,7 +1,5 @@
 {  
-    "providerName": "SapHana",
-    "contentVersion": "0.3.1",
-    "checkType": "SapHanaCheck",
+    "contentVersion": "0.4.0",
     "checks": [  
         {  
             "name": "HostConfig",
@@ -10,13 +8,13 @@
             "frequencySecs": 60,
             "actions": [  
                 {  
-                    "type": "executeSql",
+                    "type": "ExecuteSql",
                     "parameters": {  
                         "sql": "SELECT * FROM SYS.M_LANDSCAPE_HOST_CONFIGURATION ORDER BY HOST_ACTIVE DESC, INDEXSERVER_ACTUAL_ROLE ASC"
                     }
                 },
                 {  
-                    "type": "parseHostConfig"
+                    "type": "ParseHostConfig"
                 }
             ]
         },
@@ -27,7 +25,7 @@
             "frequencySecs": 60,
             "actions": [  
                 {  
-                    "type": "executeSql",
+                    "type": "ExecuteSql",
                     "parameters": {  
                         "isTimeSeries": true,
                         "initialTimespanSecs": 3600,
@@ -43,11 +41,11 @@
             "frequencySecs": 60,
             "actions": [  
                 {  
-                    "type": "executeSql",
+                    "type": "ExecuteSql",
                     "parameters": {  
                         "isTimeSeries": true,
                         "initialTimespanSecs": 31536000,
-                        "sql": "SELECT h.EVENT_TIME AS _SERVER_LOCALTIME, i.VALUE AS _SERVER_UTC_OFFSET, ADD_SECONDS(h.EVENT_TIME, i.VALUE*(-1)) AS _TIMESERIES_UTC, h.* FROM SYS.M_SYSTEM_AVAILABILITY h, SYS.M_HOST_INFORMATION i WHERE h.HOST = i.HOST AND UPPER(i.KEY) = 'TIMEZONE_OFFSET' AND ADD_SECONDS(h.EVENT_TIME, i.VALUE*(-1)) > {lastRunServerUtc} ORDER BY h.EVENT_TIME ASC"
+                        "sql": "SELECT h.EVENT_TIME AS _SERVER_LOCALTIME, i.VALUE AS _SERVER_UTC_OFFSET, ADD_SECONDS(h.EVENT_TIME, i.VALUE*(-1)) AS _TIMESERIES_UTC, h.* FROM SYS.M_SYSTEM_AVAILABILITY h, SYS.M_HOST_INFORMATION i WHERE h.HOST = i.HOST AND h.EVENT_NAME <> 'PING' AND UPPER(i.KEY) = 'TIMEZONE_OFFSET' AND ADD_SECONDS(h.EVENT_TIME, i.VALUE*(-1)) > {lastRunServerUtc} ORDER BY h.EVENT_TIME ASC"
                     }
                 }
             ]
@@ -59,7 +57,7 @@
             "frequencySecs": 60,
             "actions": [  
                 {  
-                    "type": "probeSqlConnection",
+                    "type": "ProbeSqlConnection",
                     "parameters": {
                         "probeTimeout": 3000
                     }

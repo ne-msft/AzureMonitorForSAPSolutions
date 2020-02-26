@@ -124,7 +124,6 @@ class tracing:
    def addQueueLogHandler(
            tracer: logging.Logger,
            ctx) -> None:
-
       # Provide access to custom (payload-specific) fields
       oldFactory = logging.getLogRecordFactory()
       def recordFactory(*args, **kwargs):
@@ -160,9 +159,8 @@ class tracing:
 
    # Initialize customer metrics tracer object
    @staticmethod
-   def initCustomerAnalyticsTracer(
-           tracer: logging.Logger,
-           ctx) -> logging.Logger:
+   def initCustomerAnalyticsTracer(tracer: logging.Logger,
+                                   ctx) -> logging.Logger:
        tracer.info("creating customer metrics tracer object")
        try:
            storageQueue = AzureStorageQueue(tracer,
@@ -172,7 +170,7 @@ class tracing:
                                             resourceGroup = ctx.vmInstance["resourceGroupName"],
                                             queueName = CUSTOMER_METRICS_QUEUE_NAMING_CONVENTION % ctx.sapmonId)
            storageKey = storageQueue.getAccessKey()
-           customerMetricsLogHandler = QueueStorageHandler(account_name=storageQueue.accountName,
+           customerMetricsLogHandler = QueueStorageHandler(account_name = storageQueue.accountName,
                                                            account_key = storageKey,
                                                            protocol = "https",
                                                            queue = storageQueue.name)
@@ -184,3 +182,19 @@ class tracing:
        logger.addHandler(customerMetricsLogHandler)
        return logger
 
+   # Ingest metrics into customer analytics
+   @staticmethod
+   def ingestCustomerAnalytics(tracer: logging.Logger,
+                               ctx,
+                               customLog: str,
+                               resultJson: str) -> None:
+      tracer.info("sending customer analytics")
+      results = json.loads(resultJson)
+      for result in results:
+         metrics = {
+            "Type": customLog,
+            "Data": result,
+         }
+         j = json.dumps(metrics)
+         ctx.analyticsTracer.debug(j)
+      return
