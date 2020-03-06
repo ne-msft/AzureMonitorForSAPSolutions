@@ -57,7 +57,7 @@ class ProviderInstanceThread(threading.Thread):
 
          # Ingest result into Customer Analytics
          enableCustomerAnalytics = ctx.globalParams.get("enableCustomerAnalytics", True)
-         if enableCustomerAnalytics:
+         if enableCustomerAnalytics and check.includeInCustomerAnalytics:
              tracing.ingestCustomerAnalytics(tracer,
                                              ctx,
                                              check.customLog,

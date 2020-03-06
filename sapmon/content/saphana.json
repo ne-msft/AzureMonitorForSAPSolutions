@@ -6,6 +6,7 @@
             "description": "SAP HANA Host Config",
             "customLog": "SapHana_HostConfig",
             "frequencySecs": 60,
+            "includeInCustomerAnalytics": true,
             "actions": [  
                 {  
                     "type": "ExecuteSql",
@@ -23,6 +24,7 @@
             "description": "SAP HANA Load History",
             "customLog": "SapHana_LoadHistory",
             "frequencySecs": 60,
+            "includeInCustomerAnalytics": true,
             "actions": [  
                 {  
                     "type": "ExecuteSql",
@@ -39,6 +41,7 @@
             "description": "SAP HANA System Availability",
             "customLog": "SapHana_SystemAvailability",
             "frequencySecs": 60,
+            "includeInCustomerAnalytics": true,
             "actions": [  
                 {  
                     "type": "ExecuteSql",
@@ -55,6 +58,7 @@
             "description": "Probe for SAP HANA SQL connection",
             "customLog": "SapHana_SqlProbe",
             "frequencySecs": 60,
+            "includeInCustomerAnalytics": true,
             "actions": [  
                 {  
                     "type": "ProbeSqlConnection",
