@@ -2,9 +2,13 @@ import logging
 import sys
 
 from provider.saphana import *
+from provider.prometheus import *
 
 availableProviders = {
-                        "SapHana": (saphanaProviderInstance, saphanaProviderCheck)
+                        "SapHana": (saphanaProviderInstance, saphanaProviderCheck),
+                        "prometheus_generic": (prometheusProviderInstance, prometheusProviderCheck),
+                        "prometheus_ha_cluster": (prometheusProviderInstance, prometheusProviderCheck),
+                        "prometheus_node": (prometheusProviderInstance, prometheusProviderCheck)
                      }
 
 class ProviderFactory(object):
