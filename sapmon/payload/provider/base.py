@@ -176,6 +176,7 @@ class ProviderCheck(ABC):
    description = None
    customLog = None
    frequencySecs = None
+   includeInCustomerAnalytics = False
    actions = []
    state = {}
    fullName = None
@@ -189,12 +190,14 @@ class ProviderCheck(ABC):
                 customLog: str,
                 frequencySecs: int,
                 actions: List[str],
+                includeInCustomerAnalytics: bool = False,
                 enabled: bool = True):
       self.providerInstance = providerInstance
       self.name = name
       self.description = description
       self.customLog = customLog
       self.frequencySecs = frequencySecs
+      self.includeInCustomerAnalytics = includeInCustomerAnalytics
       self.actions = actions
       self.state = {
          "isEnabled": enabled,
