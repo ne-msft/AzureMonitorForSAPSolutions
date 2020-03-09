@@ -1,7 +1,6 @@
 import logging
 import sys
 
-#from provider.base import ProviderInstance, ProviderCheck
 from provider.saphana import *
 
 availableProviders = {
