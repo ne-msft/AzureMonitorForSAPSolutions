@@ -23,10 +23,9 @@ from helper.azure import *
 from helper.context import Context
 from helper.tools import *
 from helper.tracing import *
+from helper.providerfactory import *
 from helper.updateprofile import *
 from helper.updatefactory import *
-
-from provider.saphana import saphanaProviderInstance
 
 ###############################################################################
 
@@ -90,17 +89,14 @@ def loadConfig() -> bool:
             tracer.error("invalid secret name (should be: provider-name): %s" % (secretName))
             continue
          providerType, instanceName = parts[0], parts[1]
-         providerClass = CLASSNAME_PROVIDER % providerType
-         instance = {"type": providerType,
-                     "name": instanceName,
-                     "properties": providerProperties}
+         instanceProperties = {"type": providerType,
+                               "name": instanceName,
+                               "properties": providerProperties}
          try:
-            providerInstance = eval(providerClass)(tracer,
-                                                   instance,
-                                                   skipContent=False)
-         except NameError as e:
-            tracer.error("unknown provider type %s" % providerType)
-            continue
+            providerInstance = ProviderFactory.makeProviderInstance(providerType,
+                                                                    tracer,
+                                                                    instanceProperties,
+                                                                    skipContent = False)
          except Exception as e:
             tracer.error("could not validate provider instance %s (%s)" % (instanceName,
                                                                            e))
@@ -164,48 +160,44 @@ def onboard(args: str) -> None:
 # Used by "onboard" to set each provider instance,
 # or by "provider add" to set a single provider instance
 def addProvider(args: str = None,
-                providerInstance: Dict[str, str] = None) -> bool:
+                instanceProperties: Dict[str, str] = None) -> bool:
    global ctx, tracer
    # If triggered directly via command-line (sapmon.py provider add)
    if args:
-      providerInstance = {"name": args.name,
-                          "type": args.type}
+      instanceProperties = {"name": args.name,
+                            "type": args.type}
       try:
-         providerInstance["properties"] = json.loads(args.properties)
+         instanceProperties["properties"] = json.loads(args.properties)
       except json.decoder.JSONDecodeError as e:
          tracer.error("invalid JSON format (%s)" % e)
          return False
 
-   instanceName = providerInstance.get("name", None)
-   providerType = providerInstance.get("type", None)
-   providerProperties = providerInstance.get("properties", None)
-   tracer.info("trying to add provider instance (name=%s, type=%s) to KeyVault" % (instanceName,
-                                                                                   providerType))
+   instanceName = instanceProperties.get("name", None)
+   providerType = instanceProperties.get("type", None)
+   providerProperties = instanceProperties.get("properties", None)
+   tracer.info("trying to add new provider instance (name=%s, type=%s)" % (instanceName,
+                                                                           providerType))
    if not instanceName or not providerType or not providerProperties:
       tracer.error("provider incomplete; must have name, type and properties")
       return False
 
    # Instantiate provider, so we can run validation check
-   providerClass = CLASSNAME_PROVIDER % providerType
    try:
-      instance = eval(providerClass)(tracer,
-                                     providerInstance,
- 	                             skipContent=True)
-   except NameError as e:
-      tracer.critical("unknown provider type %s" % providerType)
-      return False
+      newProviderInstance = ProviderFactory.makeProviderInstance(providerType,
+                                                                 tracer,
+                                                                 instanceProperties,
+                                                                 skipContent = True)
    except Exception as e:
-      tracer.critical("could not instantiate %s (%s)" % (providerClass,
+      tracer.critical("could not instantiate %s (%s)" % (providerType,
                                                          e))
-      traceback.print_exc()
       return False
-   if not instance.validate():
-      tracer.warning("validation check for provider instance %s failed" % instance.fullName)
+   if not newProviderInstance.validate():
+      tracer.critical("validation check for provider instance %s failed" % newProviderInstance.fullName)
       return False
-   if not saveInstanceToConfig(providerInstance):
-      tracer.error("could not save provider instance %s to KeyVault" % instance.fullName)
+   if not saveInstanceToConfig(instanceProperties):
+      tracer.error("could not save provider instance %s to KeyVault" % newProviderInstance.fullName)
       return False
-   tracer.info("successfully added provider instance %s to KeyVault" % instance.fullName)
+   tracer.info("successfully added provider instance %s to KeyVault" % newProviderInstance.fullName)
    return True
 
 # Delete a single provider instance by name
