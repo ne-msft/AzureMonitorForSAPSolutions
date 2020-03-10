@@ -25,8 +25,6 @@ DEFAULT_QUEUE_TRACE_LEVEL   = logging.DEBUG
 
 # Config parameters
 CONFIG_SECTION_GLOBAL = "global"
-CLASSNAME_PROVIDER    = "%sProviderInstance"
-CLASSNAME_CHECK       = "%sProviderCheck"
 METHODNAME_ACTION     = "_action%s"
 KV_SECRET_FORMAT      = "%s-%s"
 

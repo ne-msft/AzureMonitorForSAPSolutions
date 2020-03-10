@@ -11,7 +11,7 @@ from helper.tools import *
 
 ###############################################################################
 
-# Base class for an instance of a monitoring provider
+# Abstract base class for an instance of a monitoring provider
 class ProviderInstance(ABC):
    tracer = None
    name = None
@@ -41,7 +41,7 @@ class ProviderInstance(ABC):
 
    # Read provider content file
    def initContent(self) -> bool:
-      from provider.saphana import saphanaProviderCheck
+      from helper.providerfactory import ProviderFactory
 
       self.tracer.info("[%s] initializing content for provider instance" % self.fullName)
       try:
@@ -71,19 +71,18 @@ class ProviderInstance(ABC):
       self.checks = []
       for checkOptions in checks:
          try:
-            # TODO(tniek): Refactor this by having children ProviderInstance classes
-            # (e.g. saphanaProviderInstance) pass their respective ProviderCheck class
-            checkType = CLASSNAME_CHECK % self.providerType
-            self.tracer.info("[%s] instantiating check of type %s" % (self.fullName,
-                                                                      checkType))
+            self.tracer.info("[%s] instantiating check for provider type %s" % (self.fullName,
+                                                                                self.providerType))
             self.tracer.debug("[%s] checkOptions=%s" % (self.fullName,
                                                         checkOptions))
-            check = eval(checkType)(self, **checkOptions)
-            self.checks.append(check)
+            newCheck = ProviderFactory.makeProviderCheck(self.providerType,
+                                                         self,
+                                                         **checkOptions)
+            self.checks.append(newCheck)
          except Exception as e:
-            self.tracer.error("[%s] could not instantiate check of type %s (%s)" % (self.fullName,
-                                                                                    checkType,
-                                                                                    e))
+            self.tracer.error("[%s] could not instantiate check for provider type %s (%s)" % (self.fullName,
+                                                                                              self.providerType,
+                                                                                              e))
       return True
 
    # Read most recent, provider-specific state from state file
