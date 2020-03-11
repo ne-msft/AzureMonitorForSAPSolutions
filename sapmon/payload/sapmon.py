@@ -130,7 +130,6 @@ def saveInstanceToConfig(instance: Dict[str, str]) -> bool:
 def onboard(args: str) -> None:
    global ctx, tracer
    tracer.info("starting onboarding")
-   error = False
 
    # Update global parameters and save them to KeyVault
    ctx.globalParams = {"logAnalyticsWorkspaceId": args.logAnalyticsWorkspaceId,
@@ -141,20 +140,21 @@ def onboard(args: str) -> None:
       tracer.critical("could not save global config to KeyVault")
       sys.exit(ERROR_SETTING_KEYVAULT_SECRET)
 
-   try:
-      providerInstances = json.loads(args.providers)
-   except json.decoder.JSONDecodeError as e:
-      tracer.error("invalid JSON format for provider instance list (%s)" % e)
-   for p in providerInstances:
-      tracer.debug("trying to add provider instance %s" % p)
-      if not addProvider(providerInstance = p):
-         error = True
+   if args.providers:
+      error = False
+      try:
+         providerInstances = json.loads(args.providers)
+      except json.decoder.JSONDecodeError as e:
+         tracer.error("invalid JSON format for provider instance list (%s)" % e)
+      for p in providerInstances:
+         tracer.debug("trying to add provider instance %s" % p)
+         if not addProvider(providerInstance = p):
+            error = True
+      if error:
+         tracer.error("onboarding failed with errors")
+         sys.exit(ERROR_ONBOARDING)
 
-   if error:
-      tracer.error("onboarding failed with errors")
-      sys.exit(ERROR_ONBOARDING)
-   else:
-      tracer.info("onboarding successfully completed")
+   tracer.info("onboarding successfully completed")
    return
 
 # Used by "onboard" to set each provider instance,
@@ -336,7 +336,7 @@ def main() -> None:
                           type = str,
                           help = "Shared key (primary) of the Log Analytics Workspace")
    onbParser.add_argument("--providers",
-                          required = True,
+                          required = False,
                           type = str,
                           help = "JSON-formatted list of all provider instances")
    onbParser.add_argument("--enableCustomerAnalytics",
