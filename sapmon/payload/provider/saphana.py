@@ -244,7 +244,7 @@ class saphanaProviderCheck(ProviderCheck):
       return resultHash
 
    # Update the internal state of this check (including last run times)
-   def _updateState(self) -> bool:
+   def updateState(self) -> bool:
       self.tracer.info("[%s] updating internal state" % self.fullName)
       (colIndex, resultRows) = self.lastResult
 
@@ -308,7 +308,7 @@ class saphanaProviderCheck(ProviderCheck):
                                                             resultRows))
 
       # Update internal state
-      if not self._updateState():
+      if not self.updateState():
          return False
 
       # Disconnect from HANA server to avoid memory leaks
@@ -437,6 +437,6 @@ class saphanaProviderCheck(ProviderCheck):
          )
 
       # Update internal state
-      if not self._updateState():
+      if not self.updateState():
          return False
       return True

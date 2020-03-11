@@ -282,5 +282,5 @@ class ProviderCheck(ABC):
 
    # Method that gets called when the internal state is updated
    @abstractmethod
-   def _updateState(self):
+   def updateState(self):
       pass
