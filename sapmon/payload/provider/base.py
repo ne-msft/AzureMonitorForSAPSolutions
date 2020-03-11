@@ -246,39 +246,10 @@ class ProviderCheck(ABC):
                                                                                              methodName))
       return self.generateJsonString()
 
-   # Generate a JSON-encoded string with the last query result
-   # This string will be ingested into Log Analytics and Customer Analytics
+   # Method to generate a JSON object that can be ingested into Log Analytics
+   @abstractmethod
    def generateJsonString(self) -> str:
-      self.tracer.info("[%s] converting SQL query result set into JSON format" % self.fullName)
-      logData = []
-      
-      # Only loop through the result if there is one
-      if self.lastResult:
-         (colIndex, resultRows) = self.lastResult
-         # Iterate through all rows of the last query result
-         for r in resultRows:
-            logItem = {
-               "CONTENT_VERSION": self.providerInstance.contentVersion,
-               "SAPMON_VERSION": PAYLOAD_VERSION,
-               "PROVIDER_INSTANCE": self.providerInstance.name,
-            }
-            for c in colIndex.keys():
-               # Unless it's the column mapped to TimeGenerated, remove internal fields
-               if c != self.colTimeGenerated and (c.startswith("_") or c == "DUMMY"):
-                  continue
-               logItem[c] = r[colIndex[c]]
-            logData.append(logItem)
-
-      # Convert temporary dictionary into JSON string
-      try:
-         resultJsonString = json.dumps(logData, sort_keys=True, indent=4, cls=JsonEncoder)
-         self.tracer.debug("[%s] resultJson=%s" % (self.fullName,
-                                                   str(resultJsonString)))
-      except Exception as e:
-         self.tracer.error("[%s] could not format logItem=%s into JSON (%s)" % (self.fullName,
-                                                                                logItem,
-                                                                                e))
-      return resultJsonString
+      return
 
    # Method that gets called when the internal state is updated
    @abstractmethod
