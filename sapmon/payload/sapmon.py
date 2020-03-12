@@ -148,7 +148,7 @@ def onboard(args: str) -> None:
          tracer.error("invalid JSON format for provider instance list (%s)" % e)
       for p in providerInstances:
          tracer.debug("trying to add provider instance %s" % p)
-         if not addProvider(providerInstance = p):
+         if not addProvider(instanceProperties = p):
             error = True
       if error:
          tracer.error("onboarding failed with errors")
