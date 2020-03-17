@@ -4,7 +4,7 @@ import sys
 from provider.saphana import *
 
 availableProviders = {
-                        "sapHana": (saphanaProviderInstance, saphanaProviderCheck)
+                        "SapHana": (saphanaProviderInstance, saphanaProviderCheck)
                      }
 
 class ProviderFactory(object):
