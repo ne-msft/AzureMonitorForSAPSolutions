@@ -140,27 +140,13 @@ def onboard(args: str) -> None:
       tracer.critical("could not save global config to KeyVault")
       sys.exit(ERROR_SETTING_KEYVAULT_SECRET)
 
-   if args.providers:
-      error = False
-      try:
-         providerInstances = json.loads(args.providers)
-      except json.decoder.JSONDecodeError as e:
-         tracer.error("invalid JSON format for provider instance list (%s)" % e)
-      for p in providerInstances:
-         tracer.debug("trying to add provider instance %s" % p)
-         if not addProvider(instanceProperties = p):
-            error = True
-      if error:
-         tracer.error("onboarding failed with errors")
-         sys.exit(ERROR_ONBOARDING)
-
    tracer.info("onboarding successfully completed")
    return
 
 # Used by "onboard" to set each provider instance,
 # or by "provider add" to set a single provider instance
 def addProvider(args: str = None,
-                instanceProperties: Dict[str, str] = None) -> bool:
+                instanceProperties: Dict[str, str] = None) -> None:
    global ctx, tracer
    # If triggered directly via command-line (sapmon.py provider add)
    if args:
@@ -179,7 +165,7 @@ def addProvider(args: str = None,
                                                                            providerType))
    if not instanceName or not providerType or not providerProperties:
       tracer.error("provider incomplete; must have name, type and properties")
-      return False
+      sys.exit(ERROR_ADDING_PROVIDER)
 
    # Instantiate provider, so we can run validation check
    try:
@@ -190,15 +176,16 @@ def addProvider(args: str = None,
    except Exception as e:
       tracer.critical("could not instantiate %s (%s)" % (providerType,
                                                          e))
-      return False
+      sys.exit(ERROR_ADDING_PROVIDER)
+
    if not newProviderInstance.validate():
       tracer.critical("validation check for provider instance %s failed" % newProviderInstance.fullName)
-      return False
+      sys.exit(ERROR_ADDING_PROVIDER)
    if not saveInstanceToConfig(instanceProperties):
       tracer.error("could not save provider instance %s to KeyVault" % newProviderInstance.fullName)
-      return False
+      sys.exit(ERROR_ADDING_PROVIDER)
    tracer.info("successfully added provider instance %s to KeyVault" % newProviderInstance.fullName)
-   return True
+
 
 # Delete a single provider instance by name
 def deleteProvider(args: str) -> None:
