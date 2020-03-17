@@ -57,9 +57,9 @@ class saphanaProviderInstance(ProviderInstance):
       self.hanaDbPassword = self.providerProperties.get("hanaDbPassword", None)
       if not self.hanaDbPassword:
          hanaDbPasswordKeyVaultUrl = self.providerProperties.get("hanaDbPasswordKeyVaultUrl", None)
-         passwordKeyVaultMsiClientId = self.providerProperties.get("passwordKeyVaultMsiClientId", None)
+         passwordKeyVaultMsiClientId = self.providerProperties.get("keyVaultCredentialsMsiClientID", None)
          if not hanaDbPasswordKeyVaultUrl or not passwordKeyVaultMsiClientId:
-            self.tracer.error("[%s] if no password, hanaDbPasswordKeyVaultUrl and passwordKeyVaultMsiClientId must be given" % self.fullName)
+            self.tracer.error("[%s] if no password, hanaDbPasswordKeyVaultUrl and keyVaultCredentialsMsiClientID must be given" % self.fullName)
             return False
 
          # Determine URL of separate KeyVault
