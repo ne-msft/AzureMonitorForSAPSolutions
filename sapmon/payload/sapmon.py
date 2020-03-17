@@ -322,10 +322,6 @@ def main() -> None:
                           required = True,
                           type = str,
                           help = "Shared key (primary) of the Log Analytics Workspace")
-   onbParser.add_argument("--providers",
-                          required = False,
-                          type = str,
-                          help = "JSON-formatted list of all provider instances")
    onbParser.add_argument("--enableCustomerAnalytics",
                           required = False,
                           help = "Setting to enable sending metrics to Microsoft",
