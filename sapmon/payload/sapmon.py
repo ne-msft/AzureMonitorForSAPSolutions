@@ -185,7 +185,7 @@ def addProvider(args: str = None,
       tracer.error("could not save provider instance %s to KeyVault" % newProviderInstance.fullName)
       sys.exit(ERROR_ADDING_PROVIDER)
    tracer.info("successfully added provider instance %s to KeyVault" % newProviderInstance.fullName)
-
+   return
 
 # Delete a single provider instance by name
 def deleteProvider(args: str) -> None:
