@@ -42,24 +42,24 @@ class saphanaProviderInstance(ProviderInstance):
 
    # Parse provider properties and fetch DB password from KeyVault, if necessary
    def parseProperties(self):
-      self.hanaHostname = self.providerProperties.get("HanaHostname", None)
+      self.hanaHostname = self.providerProperties.get("hanaHostname", None)
       if not self.hanaHostname:
-         self.tracer.error("[%s] HanaHostname cannot be empty" % self.fullName)
+         self.tracer.error("[%s] hanaHostname cannot be empty" % self.fullName)
          return False
-      self.hanaDbSqlPort = self.providerProperties.get("HanaDbSqlPort", None)
+      self.hanaDbSqlPort = self.providerProperties.get("hanaDbSqlPort", None)
       if not self.hanaDbSqlPort:
-         self.tracer.error("[%s] HanaDbSqlPort cannot be empty" % self.fullName)
+         self.tracer.error("[%s] hanaDbSqlPort cannot be empty" % self.fullName)
          return False
-      self.hanaDbUsername = self.providerProperties.get("HanaDbUsername", None)
+      self.hanaDbUsername = self.providerProperties.get("hanaDbUsername", None)
       if not self.hanaDbUsername:
-         self.tracer.error("[%s] HanaDbUsername cannot be empty" % self.fullName)
+         self.tracer.error("[%s] hanaDbUsername cannot be empty" % self.fullName)
          return False
-      self.hanaDbPassword = self.providerProperties.get("HanaDbPassword", None)
+      self.hanaDbPassword = self.providerProperties.get("hanaDbPassword", None)
       if not self.hanaDbPassword:
-         hanaDbPasswordKeyVaultUrl = self.providerProperties.get("HanaDbPasswordKeyVaultUrl", None)
-         passwordKeyVaultMsiClientId = self.providerProperties.get("PasswordKeyVaultMsiClientId", None)
+         hanaDbPasswordKeyVaultUrl = self.providerProperties.get("hanaDbPasswordKeyVaultUrl", None)
+         passwordKeyVaultMsiClientId = self.providerProperties.get("keyVaultCredentialsMsiClientID", None)
          if not hanaDbPasswordKeyVaultUrl or not passwordKeyVaultMsiClientId:
-            self.tracer.error("[%s] if no password, HanaDbPasswordKeyVaultUrl and PasswordKeyVaultMsiClientId must be given" % self.fullName)
+            self.tracer.error("[%s] if no password, hanaDbPasswordKeyVaultUrl and keyVaultCredentialsMsiClientID must be given" % self.fullName)
             return False
 
          # Determine URL of separate KeyVault
