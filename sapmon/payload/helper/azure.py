@@ -107,6 +107,18 @@ class AzureKeyVault:
          sys.exit(ERROR_SETTING_KEYVAULT_SECRET)
       return True
 
+   # Delete a secret from the KeyVault
+   def deleteSecret(self,
+                    secretName: str) -> bool:
+      self.tracer.info("deleting KeyVault secret %s" % secretName)
+      try:
+         r = self.kv_client.begin_delete_secret(secretName)
+         print(r)
+      except Exception as e:
+         self.tracer.critical("could not delete KeyVault secret (%s)" % e)
+         return False
+      return True
+
    # Get the current version of a specific secret in the KeyVault
    def getSecret(self,
                  secretId: str) -> bool:
