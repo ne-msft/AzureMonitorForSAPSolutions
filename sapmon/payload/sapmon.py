@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # 
 #       Azure Monitor for SAP Solutions - Payload
 #       (to be deployed on collector VM)
@@ -190,7 +189,23 @@ def addProvider(args: str = None,
 # Delete a single provider instance by name
 def deleteProvider(args: str) -> None:
    global ctx, tracer
-   tracer.critical("provider delete not yet implemented")
+   tracer.info("retrieving provider list from KeyVault")
+
+   providerToDelete = args.name.lower()
+   secrets = ctx.azKv.getCurrentSecrets()
+   # Get a dictionary with provider instance names and their corresponding secret names
+   providerSecrets = {k.split("-")[1].lower(): k for k in iter(secrets.keys()) if k.find("-") > 0}
+
+   if providerToDelete not in providerSecrets:
+      tracer.error("provider instance %s not found in KeyVault" % providerToDelete)
+      sys.exit(ERROR_DELETING_PROVIDER)
+   secretToDelete = providerSecrets[providerToDelete]
+
+   if not ctx.azKv.kv_client.deleteSecret(secretToDelete):
+      tracer.error("error deleting KeyVault secret %s" % secretToDelete)
+      sys.exit(ERROR_DELETING_PROVIDER)
+
+   tracer.info("provider %s successfully deleted from KeyVault" % providerToDelete)
    return
 
 # Execute the actual monitoring payload
