@@ -74,8 +74,8 @@ class prometheusProviderCheck(ProviderCheck):
                             includePrefixes: str) -> bool:
         self.tracer.info("[%s] Fetching metrics" % self.fullName)
         metricsData = self.providerInstance.fetch_metrics()
-        self.lastResult=(metricsData, includePrefixes)
-        if metricsData == None:
+        self.lastResult = (metricsData, includePrefixes)
+        if metricsData is None:
             self.tracer.info("[%s] Unable to fetch metrics" % self.fullName)
             return False
         return self.updateState()
@@ -96,7 +96,7 @@ class prometheusProviderCheck(ProviderCheck):
             sample.labels["instance"] = self.providerInstance.instance
             sample_dict = {
                 "name" : sample.name,
-                "labels" : json.dumps(sample.labels, separators=(',',':'), sort_keys=True),
+                "labels" : json.dumps(sample.labels, separators=(',',':'), sort_keys=True, cls=JsonEncoder),
                 "value" : sample.value,
                 "TimeGenerated": TimeGenerated,
                 "instance": self.providerInstance.instance,
@@ -126,7 +126,7 @@ class prometheusProviderCheck(ProviderCheck):
                                   (self.fullName, includePrefixes))
                 return False
         resultSet = list()
-        self.tracer.info("converting result set into JSON")
+        self.tracer.info("[%s] converting result set into JSON" % self.fullName)
         try:
             if not prometheusMetricsText:
                 raise ValueError("Empty result from prometheus instance %s", self.providerInstance.instance)
@@ -134,7 +134,7 @@ class prometheusProviderCheck(ProviderCheck):
                                  text_string_to_metric_families(prometheusMetricsText)):
                 resultSet.extend(map(prometheusSample2Dict, family.samples))
         except ValueError as e:
-            self.tracer.error("Could not parse prometheus metrics (%s): %s" % (e, prometheusMetricsText))
+            self.tracer.error("[%s] Could not parse prometheus metrics (%s): %s" % (self.fullName, e, prometheusMetricsText))
             resultSet.append(prometheusSample2Dict(Sample("up", dict(), 0)))
         else:
             # The up-metric is used to determine whatever valid data could be read from
@@ -143,9 +143,9 @@ class prometheusProviderCheck(ProviderCheck):
         resultSet.append(prometheusSample2Dict(
             Sample("sapmon",
                    {
-                       "content_version": self.providerInstance.contentVersion,
-                       "sapmon_version": PAYLOAD_VERSION,
-                       "provider_instance": self.providerInstance.name
+                       "CONTENT_VERSION": self.providerInstance.contentVersion,
+                       "SAPMON_VERSION": PAYLOAD_VERSION,
+                       "PROVIDER_INSTANCE": self.providerInstance.name
                    }, 1)))
         # Convert temporary dictionary into JSON string
         try:
