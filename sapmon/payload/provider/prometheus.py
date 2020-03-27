@@ -42,6 +42,7 @@ class prometheusProviderInstance(ProviderInstance):
         self.instance_name = urllib.parse.urlparse(self.metricsUrl).netloc
         return True
         """
+        # FIXME: This needs to be validated and implemented
         includeRegex = self.providerProperties.get("IncludePrefixes", None)
         if includeRegex:
             try:
@@ -60,12 +61,11 @@ class prometheusProviderInstance(ProviderInstance):
 
     def validate(self) -> bool:
         self.tracer.info("fetching data from %s to validate connection" % self.metricsUrl)
-        ### FIXME Implement actual check
-        return True
+        return bool(self.fetch_metrics())
 
     def fetch_metrics(self) -> str:
         try:
-            resp = requests.get(self.metricsUrl, timeout = (2,5))
+            resp = requests.get(self.metricsUrl, timeout = HTTP_TIMEOUT)
             resp.raise_for_status()
             return resp.text
         except Exception as err:
@@ -115,8 +115,6 @@ class prometheusProviderCheck(ProviderCheck):
                 "name" : sample.name,
                 "labels" : json.dumps(sample.labels, separators=(',',':'), sort_keys=True),
                 "value" : sample.value,
-                # Prefer the usage of metric provided timestamp, fall back to using our own
-                # Note: Current prometheus best practices discourages exporters to send timestamps
                 "TimeGenerated": TimeGenerated,
                 "instance": self.providerInstance.instance,
                 "correlation_id": correlation_id
@@ -149,13 +147,15 @@ class prometheusProviderCheck(ProviderCheck):
         try:
             if not prometheusMetricsText:
                 raise ValueError("Empty result from prometheus instance %s", self.providerInstance.instance)
-            for family in filter(filter_prometheus_metric, text_string_to_metric_families(prometheusMetricsText)):
+            for family in filter(filter_prometheus_metric,
+                                 text_string_to_metric_families(prometheusMetricsText)):
                 resultSet.extend(map(prometheusSample2Dict, family.samples))
         except ValueError as e:
             self.tracer.error("Could not parse prometheus metrics (%s): %s" % (e, prometheusMetricsText))
             resultSet.append(prometheusSample2Dict(Sample("up", dict(), 0)))
         else:
-            # The up-metric is used to determine whatever valid data could be read from the prometheus endpoint
+            # The up-metric is used to determine whatever valid data could be read from
+            # the prometheus endpoint and is used by prometheus in a similar way
             resultSet.append(prometheusSample2Dict(Sample("up", dict(), 1)))
         resultSet.append(prometheusSample2Dict(Sample("sapmon",
                                                       {
