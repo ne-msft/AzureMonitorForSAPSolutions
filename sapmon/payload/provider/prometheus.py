@@ -41,23 +41,6 @@ class prometheusProviderInstance(ProviderInstance):
             return False
         self.instance_name = urllib.parse.urlparse(self.metricsUrl).netloc
         return True
-        """
-        # FIXME: This needs to be validated and implemented
-        includeRegex = self.providerProperties.get("IncludePrefixes", None)
-        if includeRegex:
-            try:
-                self.includePrefixes = re.compile(includeRegex)
-            except re.error:
-                self.tracer.error("[%s] includePrefixes must be a valid regular expression" % self.fullName)
-                return False
-        excludeRegex = prometheusOptions.get("excludePrefixes", r"^(?:go|promhttp|process)_")
-        if excludeRegex:
-            try:
-                self.excludePrefixes = re.compile(excludeRegex)
-            except re.error:
-                self.tracer.error("[%s] excludePrefixes must be a valid regular expression" % self.fullName)
-                return False
-        """
 
     def validate(self) -> bool:
         self.tracer.info("fetching data from %s to validate connection" % self.metricsUrl)
@@ -119,7 +102,7 @@ class prometheusProviderCheck(ProviderCheck):
                 "instance": self.providerInstance.instance,
                 "correlation_id": correlation_id
             }
-            # FIXME: Implement
+            # FIXME: Implement custom fields
             #for (k, v) in promUrl.customFields:
             #    sample_dict["custom_%s" % k] = v
             return sample_dict
@@ -157,12 +140,13 @@ class prometheusProviderCheck(ProviderCheck):
             # The up-metric is used to determine whatever valid data could be read from
             # the prometheus endpoint and is used by prometheus in a similar way
             resultSet.append(prometheusSample2Dict(Sample("up", dict(), 1)))
-        resultSet.append(prometheusSample2Dict(Sample("sapmon",
-                                                      {
-                                                        "content_version": self.providerInstance.contentVersion,
-                                                        "sapmon_version": PAYLOAD_VERSION,
-                                                        "provider_instance": self.providerInstance.name
-                                                      }, 1)))
+        resultSet.append(prometheusSample2Dict(
+            Sample("sapmon",
+                   {
+                       "content_version": self.providerInstance.contentVersion,
+                       "sapmon_version": PAYLOAD_VERSION,
+                       "provider_instance": self.providerInstance.name
+                   }, 1)))
         # Convert temporary dictionary into JSON string
         try:
             # Use a very compact json representation to limit amount of data parsed by LA
