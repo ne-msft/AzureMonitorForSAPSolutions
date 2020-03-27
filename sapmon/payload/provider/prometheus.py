@@ -84,7 +84,7 @@ class prometheusProviderCheck(ProviderCheck):
     def generateJsonString(self) -> str:
         # The correlation_id can be used to group fields from the same metrics call
         correlation_id = str(uuid.uuid4())
-        fallback_datetime=datetime.now(timezone.utc)
+        fallback_datetime = datetime.now(timezone.utc)
 
         def prometheusSample2Dict(sample):
             """
@@ -166,4 +166,3 @@ class prometheusProviderCheck(ProviderCheck):
         self.state["lastRunLocal"] = datetime.utcnow()
         self.tracer.info("[%s] internal state successfully updated" % self.fullName)
         return True
-
