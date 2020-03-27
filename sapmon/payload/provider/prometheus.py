@@ -35,7 +35,7 @@ class prometheusProviderInstance(ProviderInstance):
 
     def parseProperties(self):
         ### Fixme: Should this validate the url format?
-        self.metricsUrl = self.providerProperties.get("PrometheusUrl", None)
+        self.metricsUrl = self.providerProperties.get("prometheusUrl", None)
         if not self.metricsUrl:
             self.tracer.error("[%s] PrometheusUrl cannot be empty" % self.fullName)
             return False
@@ -82,7 +82,7 @@ class prometheusProviderCheck(ProviderCheck):
     lastResult = ([], None)
 
     def __init__(self,
-                 provider: ProviderInstance
+                 provider: ProviderInstance,
                  **kwargs):
         return super().__init__(provider, **kwargs)
 
