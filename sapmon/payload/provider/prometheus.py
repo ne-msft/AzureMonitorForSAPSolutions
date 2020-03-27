@@ -40,6 +40,7 @@ class prometheusProviderInstance(ProviderInstance):
             self.tracer.error("[%s] PrometheusUrl cannot be empty" % self.fullName)
             return False
         self.instance_name = urllib.parse.urlparse(self.metricsUrl).netloc
+        return True
         """
         includeRegex = self.providerProperties.get("IncludePrefixes", None)
         if includeRegex:
