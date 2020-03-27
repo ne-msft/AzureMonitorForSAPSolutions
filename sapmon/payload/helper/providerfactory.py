@@ -6,9 +6,9 @@ from provider.prometheus import *
 
 availableProviders = {
                         "SapHana": (saphanaProviderInstance, saphanaProviderCheck),
-                        "prometheus_generic": (prometheusProviderInstance, prometheusProviderCheck),
-                        "prometheus_ha_cluster": (prometheusProviderInstance, prometheusProviderCheck),
-                        "prometheus_node": (prometheusProviderInstance, prometheusProviderCheck)
+                        "PrometheusGeneric": (prometheusProviderInstance, prometheusProviderCheck),
+                        "PrometheusHaCluster": (prometheusProviderInstance, prometheusProviderCheck),
+                        "PrometheusNode": (prometheusProviderInstance, prometheusProviderCheck)
                      }
 
 class ProviderFactory(object):
