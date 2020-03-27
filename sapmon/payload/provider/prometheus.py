@@ -169,10 +169,10 @@ class prometheusProviderCheck(ProviderCheck):
             resultJsonString = json.dumps(resultSet, sort_keys=True,
                                           separators=(',',':'),
                                           cls=JsonEncoder)
-            self.tracer.debug("[%s] resultJson=%s" % (self.fullName, str(resultJsonString)))
+            self.tracer.debug("[%s] resultJson=%s" % (self.fullName, str(resultJsonString)[:1000]))
         except Exception as e:
             self.tracer.error("[%s] could not format logItem=%s into JSON (%s)" % (self.fullName,
-                                                                                   resultSet,
+                                                                                   resultSet[:50],
                                                                                    e))
         return True
 
