@@ -65,7 +65,7 @@ class prometheusProviderInstance(ProviderInstance):
 
     def fetch_metrics(self) -> str:
         try:
-            resp = requests.get(self.metricsUrl, timeout = HTTP_TIMEOUT)
+            resp = requests.get(self.metricsUrl, timeout = self.HTTP_TIMEOUT)
             resp.raise_for_status()
             return resp.text
         except Exception as err:
