@@ -65,11 +65,11 @@ class prometheusProviderInstance(ProviderInstance):
 
     def fetch_metrics(self) -> str:
         try:
-            resp = requests.get(self.url, timeout = (2,5))
+            resp = requests.get(self.metricsUrl, timeout = (2,5))
             resp.raise_for_status()
             return resp.text
         except Exception as err:
-            self.tracer.info("Failed to fetch %s (%s)" % (self.url, err))
+            self.tracer.info("Failed to fetch %s (%s)" % (self.metricsUrl, err))
             return None
 
     @property
