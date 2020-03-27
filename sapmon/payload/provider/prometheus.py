@@ -174,7 +174,7 @@ class prometheusProviderCheck(ProviderCheck):
             self.tracer.error("[%s] could not format logItem=%s into JSON (%s)" % (self.fullName,
                                                                                    resultSet[:50],
                                                                                    e))
-        return True
+        return resultJsonString
 
     # Update the internal state of this check (including last run times)
     def updateState(self) -> bool:
