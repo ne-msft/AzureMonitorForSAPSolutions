@@ -3,7 +3,7 @@
         "contentVersion": "0.1.0",
         "checks": [
                 {
-                        "name": "PrometheusHACLusterExporter",
+                        "name": "PrometheusHAClusterExporter",
                         "description": "Export Data from the hacluster specific prometheus exporter",
                         "customLog": "Prometheus_HaClusterExporter",
                         "frequencySecs": 15,
