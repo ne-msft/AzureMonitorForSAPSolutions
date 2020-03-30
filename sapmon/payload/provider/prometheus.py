@@ -61,7 +61,7 @@ class prometheusProviderInstance(ProviderInstance):
 
 # Implements a generic prometheus collector
 class prometheusProviderCheck(ProviderCheck):
-    colTimeGenerated = None
+    colTimeGenerated = "TimeGeneratedPrometheus"
     excludeRegex = re.compile(r"^(?:go|promhttp|process)_")
     lastResult = ([], None)
 
@@ -98,7 +98,7 @@ class prometheusProviderCheck(ProviderCheck):
                 "name" : sample.name,
                 "labels" : json.dumps(sample.labels, separators=(',',':'), sort_keys=True, cls=JsonEncoder),
                 "value" : sample.value,
-                "TimeGenerated": TimeGenerated,
+                self.colTimeGenerated: TimeGenerated,
                 "instance": self.providerInstance.instance,
                 "correlation_id": correlation_id
             }
