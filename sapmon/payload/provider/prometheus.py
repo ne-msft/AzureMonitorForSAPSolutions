@@ -93,7 +93,6 @@ class prometheusProviderCheck(ProviderCheck):
             TimeGenerated = fallback_datetime
             if sample.timestamp:
                 TimeGenerated = datetime.fromtimestamp(sample.timestamp, tz=timezone.utc)
-            sample.labels["instance"] = self.providerInstance.instance
             sample_dict = {
                 "name" : sample.name,
                 "labels" : json.dumps(sample.labels, separators=(',',':'), sort_keys=True, cls=JsonEncoder),
