@@ -1,0 +1,20 @@
+{
+        "contentType": "Prometheus",
+        "contentVersion": "0.1.0",
+        "checks": [
+                {
+                        "name": "PrometheusNodeExporter",
+                        "description": "Export data from the prometheus node_exporter",
+                        "customLog": "Prometheus_NodeExporter",
+                        "frequencySecs": 15,
+                        "actions": [
+                            {
+                                "type": "FetchMetrics",
+                                "parameters": {
+                                    "includePrefixes": "^node_"
+                                }
+                            }
+                        ]
+                }
+        ]
+}

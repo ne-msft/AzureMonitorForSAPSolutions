@@ -42,3 +42,5 @@ ExecuteCommand "pip3 install azure-mgmt-storage"
 ExecuteCommand "pip3 install azure-identity"
 # Install azure-keyvault-secrets
 ExecuteCommand "pip3 install azure-keyvault-secrets"
+# Install prometheus_client
+ExecuteCommand "pip3 install prometheus_client"

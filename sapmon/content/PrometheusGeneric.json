@@ -1,0 +1,17 @@
+{
+        "contentType": "Prometheus",
+        "contentVersion": "0.1.0",
+        "checks": [
+                {
+                        "name": "PrometheusGenericExporter",
+                        "description": "Export data from any prometheus exporter",
+                        "customLog": "Prometheus_GenericExporter",
+                        "frequencySecs": 15,
+                        "actions": [
+                            {
+                                "type": "FetchMetrics"
+                            }
+                        ]
+                }
+        ]
+}
