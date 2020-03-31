@@ -1,6 +1,12 @@
 # Python modules
+from datetime import datetime,timezone
 import json
 import logging
+import uuid
+import re
+import urllib
+import requests
+from requests.exceptions import Timeout
 
 # Payload modules
 from const import PAYLOAD_VERSION
@@ -11,12 +17,6 @@ from typing import Dict, List
 # provider specific modules
 from prometheus_client.samples import Sample
 from prometheus_client.parser import text_string_to_metric_families
-import uuid
-import re
-import requests
-from requests.exceptions import Timeout
-import urllib
-from datetime import datetime,timezone
 ###############################################################################
 
 class prometheusProviderInstance(ProviderInstance):
