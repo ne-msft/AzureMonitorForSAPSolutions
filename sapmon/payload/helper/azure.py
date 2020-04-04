@@ -1,7 +1,7 @@
 # Azure modules
 from azure.common.credentials import BasicTokenAuthentication
 from azure.mgmt.storage import StorageManagementClient
-from azure.identity import DefaultAzureCredential
+from azure.identity import ManagedIdentityCredential
 from azure.keyvault.secrets import SecretClient
 
 # Python modules
@@ -92,7 +92,7 @@ class AzureKeyVault:
       self.tracer.info("initializing KeyVault %s" % kvName)
       self.kvName = kvName
       self.uri = "https://%s.vault.azure.net" % kvName
-      self.token = DefaultAzureCredential(clientId = msiClientId)
+      self.token = ManagedIdentityCredential(client_id = msiClientId)
       self.kv_client = SecretClient(vault_url=self.uri, credential = self.token)
 
    # Set a secret in the KeyVault

@@ -7,6 +7,7 @@ import time
 
 # Payload modules
 from const import *
+from helper.azure import *
 from helper.tools import *
 from provider.base import ProviderInstance, ProviderCheck
 from typing import Dict, List
@@ -69,7 +70,7 @@ class saphanaProviderInstance(ProviderInstance):
             vaultNameSearch = re.search("https://(.*).vault.azure.net", hanaDbPasswordKeyVaultUrl)
             kvName = vaultNameSearch.group(1)
          except Exception as e:
-            self.tracer.error("[%s] invalid URL for the separate KeyVault" % self.fullName)
+            self.tracer.error("[%s] invalid URL for the separate KeyVault (%s)" % (self.fullName, e))
             return False
 
          # Create temporary KeyVault object to fetch relevant secret
@@ -84,7 +85,8 @@ class saphanaProviderInstance(ProviderInstance):
          self.tracer.debug("[%s] kv=%s" % (self.fullName,
                                            kv))
          try:
-            self.hanaDbPassword = kv.getSecret(hanaDbPasswordKeyVaultUrl)
+            # TODO: proper (provider-independent) handling of external KeyVaults
+            self.hanaDbPassword = kv.getSecret("HanaDbPassword").value
          except Exception as e:
             self.tracer.error("[%s] error accessing the secret inside the separate KeyVault (%s)" % (self.fullName,
                                                                                                      e))
