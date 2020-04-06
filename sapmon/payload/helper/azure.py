@@ -120,11 +120,13 @@ class AzureKeyVault:
 
    # Get the current version of a specific secret in the KeyVault
    def getSecret(self,
-                 secretId: str) -> bool:
+                 secretId: str,
+                 version: Optional[str] = None) -> bool:
       self.tracer.info("getting KeyVault secret for secretId=%s" % secretId)
       secret = None
       try:
-         secret = self.kv_client.get_secret(secretId)
+         secret = self.kv_client.get_secret(secretId,
+                                            version)
       except Exception as e:
          self.tracer.error("could not get KeyVault secret for secretId=%s (%s)" % (secretId, e))
       return secret

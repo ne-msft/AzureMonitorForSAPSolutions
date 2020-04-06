@@ -69,8 +69,11 @@ class saphanaProviderInstance(ProviderInstance):
          try:
             vaultNameSearch = re.search("https://(.*).vault.azure.net", hanaDbPasswordKeyVaultUrl)
             kvName = vaultNameSearch.group(1)
+            passwordSearch = re.search("https://.*.vault.azure.net/secrets/(.*)/(.*)", hanaDbPasswordKeyVaultUrl)
+            passwordName = passwordSearch.group(1)
+            passwordVersion = passwordSearch.group(2)
          except Exception as e:
-            self.tracer.error("[%s] invalid URL for the separate KeyVault (%s)" % (self.fullName, e))
+            self.tracer.error("[%s] invalid URL format (%s)" % (self.fullName, e))
             return False
 
          # Create temporary KeyVault object to fetch relevant secret
@@ -82,11 +85,11 @@ class saphanaProviderInstance(ProviderInstance):
             self.tracer.error("[%s] error accessing the separate KeyVault (%s)" % (self.fullName,
                                                                                    e))
             return False
-         self.tracer.debug("[%s] kv=%s" % (self.fullName,
-                                           kv))
+
+         # Access the actual secret from the external KeyVault
+         # TODO: proper (provider-independent) handling of external KeyVaults
          try:
-            # TODO: proper (provider-independent) handling of external KeyVaults
-            self.hanaDbPassword = kv.getSecret("HanaDbPassword").value
+            self.hanaDbPassword = kv.getSecret(passwordName, passwordVersion).value
          except Exception as e:
             self.tracer.error("[%s] error accessing the secret inside the separate KeyVault (%s)" % (self.fullName,
                                                                                                      e))
