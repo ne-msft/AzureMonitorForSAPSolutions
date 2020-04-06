@@ -91,7 +91,7 @@ class saphanaProviderInstance(ProviderInstance):
          # Access the actual secret from the external KeyVault
          # TODO: proper (provider-independent) handling of external KeyVaults
          try:
-            self.hanaDbPassword = kv.getSecret(passwordName, None).value#passwordVersion).value
+            self.hanaDbPassword = kv.getSecret(passwordName, None).value
          except Exception as e:
             self.tracer.error("[%s] error accessing the secret inside the separate KeyVault (%s)" % (self.fullName,
                                                                                                      e))
