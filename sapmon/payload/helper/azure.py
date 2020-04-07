@@ -1,7 +1,7 @@
 # Azure modules
 from azure.common.credentials import BasicTokenAuthentication
 from azure.mgmt.storage import StorageManagementClient
-from azure.identity import DefaultAzureCredential
+from azure.identity import ManagedIdentityCredential
 from azure.keyvault.secrets import SecretClient
 
 # Python modules
@@ -92,7 +92,7 @@ class AzureKeyVault:
       self.tracer.info("initializing KeyVault %s" % kvName)
       self.kvName = kvName
       self.uri = "https://%s.vault.azure.net" % kvName
-      self.token = DefaultAzureCredential(clientId = msiClientId)
+      self.token = ManagedIdentityCredential(client_id = msiClientId)
       self.kv_client = SecretClient(vault_url=self.uri, credential = self.token)
 
    # Set a secret in the KeyVault
@@ -120,11 +120,13 @@ class AzureKeyVault:
 
    # Get the current version of a specific secret in the KeyVault
    def getSecret(self,
-                 secretId: str) -> bool:
+                 secretId: str,
+                 version: Optional[str] = None) -> bool:
       self.tracer.info("getting KeyVault secret for secretId=%s" % secretId)
       secret = None
       try:
-         secret = self.kv_client.get_secret(secretId)
+         secret = self.kv_client.get_secret(secretId,
+                                            version)
       except Exception as e:
          self.tracer.error("could not get KeyVault secret for secretId=%s (%s)" % (secretId, e))
       return secret

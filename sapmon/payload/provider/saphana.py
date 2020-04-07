@@ -7,6 +7,7 @@ import time
 
 # Payload modules
 from const import *
+from helper.azure import *
 from helper.tools import *
 from provider.base import ProviderInstance, ProviderCheck
 from typing import Dict, List
@@ -18,10 +19,11 @@ import pyhdbcli
 ###############################################################################
 
 # HANA-specific constants
-TIMEOUT_HANA_SECS  = 5
-COL_LOCAL_UTC      = "_LOCAL_UTC"
-COL_SERVER_UTC     = "_SERVER_UTC"
-COL_TIMESERIES_UTC = "_TIMESERIES_UTC"
+REGEX_EXTERNAL_KEYVAULT_URL = "https://([A-Za-z0-9\-]+).vault.azure.net/secrets/([A-Za-z0-9\-]+)(\/)?([A-Za-z0-9\-]+)?"
+TIMEOUT_HANA_SECS           = 5
+COL_LOCAL_UTC               = "_LOCAL_UTC"
+COL_SERVER_UTC              = "_SERVER_UTC"
+COL_TIMESERIES_UTC          = "_TIMESERIES_UTC"
 
 ###############################################################################
 
@@ -66,10 +68,14 @@ class saphanaProviderInstance(ProviderInstance):
          # Determine URL of separate KeyVault
          self.tracer.info("[%s] fetching HANA credentials from separate KeyVault" % self.fullName)
          try:
-            vaultNameSearch = re.search("https://(.*).vault.azure.net", hanaDbPasswordKeyVaultUrl)
-            kvName = vaultNameSearch.group(1)
+            passwordSearch = re.match(REGEX_EXTERNAL_KEYVAULT_URL,
+                                      hanaDbPasswordKeyVaultUrl,
+                                      re.IGNORECASE)
+            kvName = passwordSearch.group(1)
+            passwordName = passwordSearch.group(2)
+            passwordVersion = passwordSearch.group(4)
          except Exception as e:
-            self.tracer.error("[%s] invalid URL for the separate KeyVault" % self.fullName)
+            self.tracer.error("[%s] invalid URL format (%s)" % (self.fullName, e))
             return False
 
          # Create temporary KeyVault object to fetch relevant secret
@@ -81,10 +87,11 @@ class saphanaProviderInstance(ProviderInstance):
             self.tracer.error("[%s] error accessing the separate KeyVault (%s)" % (self.fullName,
                                                                                    e))
             return False
-         self.tracer.debug("[%s] kv=%s" % (self.fullName,
-                                           kv))
+
+         # Access the actual secret from the external KeyVault
+         # TODO: proper (provider-independent) handling of external KeyVaults
          try:
-            self.hanaDbPassword = kv.getSecret(hanaDbPasswordKeyVaultUrl)
+            self.hanaDbPassword = kv.getSecret(passwordName, None).value
          except Exception as e:
             self.tracer.error("[%s] error accessing the secret inside the separate KeyVault (%s)" % (self.fullName,
                                                                                                      e))
