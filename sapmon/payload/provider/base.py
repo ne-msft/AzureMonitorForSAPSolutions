@@ -15,9 +15,10 @@ from helper.tools import *
 class ProviderInstance(ABC):
    tracer = None
    name = None
+   fullName = None
    providerType = None
    providerProperties = {}
-   fullName = None
+   metadata = {}
    contentVersion = None
    checks = []
    state = {}
@@ -29,9 +30,10 @@ class ProviderInstance(ABC):
       # This constructor gets called after the child class
       self.tracer = tracer
       self.providerProperties = providerInstance["properties"]
+      self.metadata = providerInstance["metadata"]
       self.name = providerInstance["name"]
       self.providerType = providerInstance["type"]
-      self.fullName = "%s-%s" % (self.providerType, self.name)
+      self.fullName = "%s/%s" % (self.providerType, self.name)
       self.state = {}
       if not self.parseProperties():
          raise ValueError("failed to parse properties of the provider instance")
@@ -92,7 +94,7 @@ class ProviderInstance(ABC):
 
       # Parse JSON for all check states of this provider
       try:
-         filename = os.path.join(PATH_STATE, "%s.state" % self.fullName)
+         filename = os.path.join(PATH_STATE, "%s.state" % self.name)
          self.tracer.debug("[%s] filename=%s" % (self.fullName,
                                                  filename))
          with open(filename, "r") as file:
@@ -142,7 +144,7 @@ class ProviderInstance(ABC):
 
       # Write JSON object into state file
       try:
-         filename = os.path.join(PATH_STATE, "%s.state" % self.fullName)
+         filename = os.path.join(PATH_STATE, "%s.state" % self.name)
          self.tracer.debug("[%s] filename=%s" % (self.fullName,
                                                  filename))
          with open(filename, "w") as file:

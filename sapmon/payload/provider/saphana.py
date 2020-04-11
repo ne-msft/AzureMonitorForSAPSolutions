@@ -266,6 +266,7 @@ class saphanaProviderCheck(ProviderCheck):
                "CONTENT_VERSION": self.providerInstance.contentVersion,
                "SAPMON_VERSION": PAYLOAD_VERSION,
                "PROVIDER_INSTANCE": self.providerInstance.name,
+               "METADATA": self.providerInstance.metadata
             }
             for c in colIndex.keys():
                # Unless it's the column mapped to TimeGenerated, remove internal fields

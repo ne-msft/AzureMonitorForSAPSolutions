@@ -144,7 +144,8 @@ class prometheusProviderCheck(ProviderCheck):
                    {
                        "CONTENT_VERSION": self.providerInstance.contentVersion,
                        "SAPMON_VERSION": PAYLOAD_VERSION,
-                       "PROVIDER_INSTANCE": self.providerInstance.name
+                       "PROVIDER_INSTANCE": self.providerInstance.name,
+                       "METADATA": self.providerInstance.metadata
                    }, 1)))
         # Convert temporary dictionary into JSON string
         try:
