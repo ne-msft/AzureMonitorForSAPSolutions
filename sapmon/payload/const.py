@@ -24,9 +24,8 @@ DEFAULT_FILE_TRACE_LEVEL    = logging.INFO
 DEFAULT_QUEUE_TRACE_LEVEL   = logging.DEBUG
 
 # Config parameters
-CONFIG_SECTION_GLOBAL = "global"
+CONFIG_SECTION_GLOBAL = "-global-"
 METHODNAME_ACTION     = "_action%s"
-KV_SECRET_FORMAT      = "%s-%s"
 
 # Naming conventions for generated resources
 KEYVAULT_NAMING_CONVENTION               = "sapmon-kv-%s"

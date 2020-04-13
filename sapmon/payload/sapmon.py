@@ -82,26 +82,23 @@ def loadConfig() -> bool:
          continue
       if secretName == CONFIG_SECTION_GLOBAL:
          ctx.globalParams = providerProperties
+         tracer.debug("successfully loaded global config")
       else:
-         parts = secretName.split("-")
-         if len(parts) < 2:
-            tracer.error("invalid secret name (should be: provider-name): %s" % (secretName))
-            continue
-         providerType, instanceName = parts[0], parts[1]
-         instanceProperties = {"type": providerType,
-                               "name": instanceName,
-                               "properties": providerProperties}
+         instanceName = providerProperties.get("name", None)
+         providerType = providerProperties.get("type", None)
          try:
             providerInstance = ProviderFactory.makeProviderInstance(providerType,
                                                                     tracer,
-                                                                    instanceProperties,
+                                                                    providerProperties,
                                                                     skipContent = False)
          except Exception as e:
             tracer.error("could not validate provider instance %s (%s)" % (instanceName,
                                                                            e))
             continue
          ctx.instances.append(providerInstance)
+         tracer.debug("successfully loaded config for provider instance %s" % instanceName)
    if ctx.globalParams == {} or len(ctx.instances) == 0:
+      tracer.error("did not find any provider instances in KeyVault")
       return False
    return True
 
@@ -109,19 +106,13 @@ def loadConfig() -> bool:
 def saveInstanceToConfig(instance: Dict[str, str]) -> bool:
    global ctx, tracer
    instanceName = instance.get("name", None)
-   providerType = instance.get("type", None)
-   providerProperties = instance.get("properties", None)
-   if not instanceName or not providerType or not providerProperties:
-      tracer.error("instance to save is missing name, type or properties")
-      return False
    tracer.info("saving instance %s to customer KeyVault" % instanceName)
    try:
-      secretValue = json.dumps(providerProperties)
+      secretValue = json.dumps(instance)
    except json.encoder.JSONEncodeError as e:
       tracer.error("cannot JSON encode instance properties (%s)" % e)
       return False   
-   secretName = KV_SECRET_FORMAT % (providerType, instanceName)
-   result = ctx.azKv.setSecret(secretName, secretValue)
+   result = ctx.azKv.setSecret(instanceName, secretValue)
    return result
 
 # Store credentials in the customer KeyVault
@@ -145,35 +136,30 @@ def onboard(args: str) -> None:
 # Used by "onboard" to set each provider instance,
 # or by "provider add" to set a single provider instance
 def addProvider(args: str = None,
-                instanceProperties: Dict[str, str] = None) -> None:
+                instanceProperties: Dict[str, str] = None) -> bool:
    global ctx, tracer
-   # If triggered directly via command-line (sapmon.py provider add)
-   if args:
-      instanceProperties = {"name": args.name,
-                            "type": args.type}
-      try:
-         instanceProperties["properties"] = json.loads(args.properties)
-      except json.decoder.JSONDecodeError as e:
-         tracer.error("invalid JSON format (%s)" % e)
-         return False
 
-   instanceName = instanceProperties.get("name", None)
-   providerType = instanceProperties.get("type", None)
-   providerProperties = instanceProperties.get("properties", None)
-   tracer.info("trying to add new provider instance (name=%s, type=%s)" % (instanceName,
-                                                                           providerType))
-   if not instanceName or not providerType or not providerProperties:
-      tracer.error("provider incomplete; must have name, type and properties")
-      sys.exit(ERROR_ADDING_PROVIDER)
+   try:
+      # TODO: validate metadata
+      instanceProperties = {"name": args.name,
+                            "type": args.type,
+                            "properties": json.loads(args.properties),
+                            "metadata": json.loads(args.metadata)}
+   except json.decoder.JSONDecodeError as e:
+      tracer.error("invalid JSON format (%s)" % e)
+      return False
+
+   tracer.info("trying to add new provider instance (name=%s, type=%s)" % (args.name,
+                                                                           args.type))
 
    # Instantiate provider, so we can run validation check
    try:
-      newProviderInstance = ProviderFactory.makeProviderInstance(providerType,
+      newProviderInstance = ProviderFactory.makeProviderInstance(args.type,
                                                                  tracer,
                                                                  instanceProperties,
                                                                  skipContent = True)
    except Exception as e:
-      tracer.critical("could not instantiate %s (%s)" % (providerType,
+      tracer.critical("could not instantiate %s (%s)" % (args.type,
                                                          e))
       sys.exit(ERROR_ADDING_PROVIDER)
 
@@ -184,28 +170,35 @@ def addProvider(args: str = None,
       tracer.error("could not save provider instance %s to KeyVault" % newProviderInstance.fullName)
       sys.exit(ERROR_ADDING_PROVIDER)
    tracer.info("successfully added provider instance %s to KeyVault" % newProviderInstance.fullName)
-   return
+   return True
 
 # Delete a single provider instance by name
 def deleteProvider(args: str) -> None:
    global ctx, tracer
    tracer.info("retrieving provider list from KeyVault")
 
-   providerToDelete = args.name.lower()
+   # Clean up state file
+   fileToDelete = "%s.state" % args.name
+   found = False
+   for f in os.listdir(PATH_STATE):
+      if f == fileToDelete:
+         os.remove(os.path.join(PATH_STATE, f))
+         tracer.info("state file %s successfully deleted" % fileToDelete)
+         found = True
+         break
+   if not found:
+      tracer.error("state file %s not found" % fileToDelete)
+
+   # Delete corresponding secret from KeyVault
+   secretToDelete = args.name
    secrets = ctx.azKv.getCurrentSecrets()
-   # Get a dictionary with provider instance names and their corresponding secret names
-   providerSecrets = {k.split("-")[1].lower(): k for k in iter(secrets.keys()) if k.find("-") > 0}
-
-   if providerToDelete not in providerSecrets:
-      tracer.error("provider instance %s not found in KeyVault" % providerToDelete)
-      sys.exit(ERROR_DELETING_PROVIDER)
-   secretToDelete = providerSecrets[providerToDelete]
-
-   if not ctx.azKv.kv_client.deleteSecret(secretToDelete):
-      tracer.error("error deleting KeyVault secret %s" % secretToDelete)
-      sys.exit(ERROR_DELETING_PROVIDER)
-
-   tracer.info("provider %s successfully deleted from KeyVault" % providerToDelete)
+   if secretToDelete not in secrets.keys():
+      tracer.error("provider instance %s not found in KeyVault (already deleted?)" % secretToDelete)
+   else:
+      if not ctx.azKv.deleteSecret(secretToDelete):
+         tracer.error("error deleting KeyVault secret %s (already marked for deletion?)" % secretToDelete)
+      else:
+         tracer.info("provider %s successfully deleted from KeyVault" % secretToDelete)
    return
 
 # Execute the actual monitoring payload
@@ -305,7 +298,7 @@ def main() -> None:
                              type = str,
                              help = "Properties of the monitoring provider")
    prvAddParser.add_argument("--metadata",
-                             required = False,
+                             required = True,
                              type = str,
                              help = "Metadata of the monitoring provider")
    addVerboseToParser(prvAddParser)
