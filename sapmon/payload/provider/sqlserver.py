@@ -20,9 +20,9 @@ from typing import Dict, List
 ###############################################################################
 
 class MSSQLProviderInstance(ProviderInstance):
-   sqlHostname = None
-   sqlDbUsername = None
-   sqlDbPassword = None
+   SQLHostname = None
+   SQLUser = None
+   SQLPassword = None
 
    def __init__(self,
                 tracer: logging.Logger,
@@ -38,11 +38,11 @@ class MSSQLProviderInstance(ProviderInstance):
    def parseProperties(self):
 
       self.SQLHostname = self.providerProperties.get("SQLHostname", None)
-      if not self.sqlHostname:
+      if not self.SQLHostname:
          self.tracer.error("[%s] SQLHostname cannot be empty" % self.fullName)
          return False
       self.SQLUser = self.providerProperties.get("SQLUser", None)
-      if not selfSQLUser:
+      if not self.SQLUser:
          self.tracer.error("[%s] SQLUser cannot be empty" % self.fullName)
          return False
       self.SQLPassword = self.providerProperties.get("SQLPassword", None)
@@ -99,7 +99,7 @@ class MSSQLProviderInstance(ProviderInstance):
       # Try to run a query against the services view
       # This query will (rightfully) fail if the sql license is expired
       try:
-         cursor.execute("SELECT * FROM M_SERVICES")
+         # execute todo
          connection.close()
       except Exception as e:
          self.tracer.error("[%s] could run validation query (%s)" % (self.fullName, e))
@@ -109,15 +109,18 @@ class MSSQLProviderInstance(ProviderInstance):
    def _establishsqlConnectionToHost(self,
                                      SQLHostname: str = None,
                                      SQLUser: str = None,
-                                     SQLPasswd: str = None) -> pyodbc.Connection:
+                                     SQLPassword: str = None) -> pyodbc.Connection:
       if not SQLHostname:
-         SQLHostname = self.sqlHostname
+         SQLHostname = self.SQLHostname
       if not SQLUser:
          SQLUser = self.SQLUser
-      if not SQLPasswd:
-         SQLUser = self.SQLPasswd
+      if not SQLPassword:
+         SQLPassword = self.SQLPassword
+      self.tracer.debug("Connection  : DRIVER={ODBC Driver 17 for SQL Server};SERVER=%s;UID=%s;PWD=%s" % (SQLHostname, SQLUser, SQLPassword))
 
-      conn = pyodbc.connect("DRIVER={ODBC Driver 17 for SQL Server};SERVER=[%s];UID=[%s];PWD=[%s]" % (SQLHostname, SQLUser, SQLPasswd))
+      conn = pyodbc.connect("DRIVER={ODBC Driver 17 for SQL Server};SERVER=%s;UID=%s;PWD=%s" % (SQLHostname, SQLUser, SQLPassword))
+
+      return conn
 
 ###############################################################################
 
@@ -140,7 +143,7 @@ class MSSQLProviderCheck(ProviderCheck):
         #Validate that we're indeed connected
         #if connection.isconnected():
       except Exception as e:
-         self.tracer.warning("[%s] could not connect to sql %s (%s)" % (self.fullName,self.SQLHostname,e))
+         self.tracer.warning("[%s] could not connect to sql (%s) " % (self.fullName,e))
          return (None)
       return (connection)
 
@@ -194,10 +197,10 @@ class MSSQLProviderCheck(ProviderCheck):
                                                                                 e))
       return resultJsonString
 
-
-
    # Connect to sql and run the check-specific SQL statement
    def _actionExecuteSql(self, sql: str) -> bool:
+      def handle_sql_variant_as_string(value):
+         return value.decode('utf-16le')
       self.tracer.info("[%s] connecting to sql and executing SQL" % self.fullName)
 
       # Find and connect to sql server
@@ -205,17 +208,24 @@ class MSSQLProviderCheck(ProviderCheck):
       if not connection:
          return False
 
+      cursor = connection.cursor()
+      connection.add_output_converter(-150, handle_sql_variant_as_string)
+
       # Execute SQL statement
       try:
          self.tracer.debug("[%s] executing SQL statement %s" % (self.fullName, sql))
-         # todo cursor.execute(sql)
+         cursor.execute(sql)
+
+         colIndex = {col[0] : idx for idx, col in enumerate(cursor.description)}
+         resultRows = cursor.fetchall()
 
       except Exception as e:
-         self.tracer.error("[%s] could not execute SQL %s (%s)" % (self.fullName, sql, e))
+         self.tracer.error("[%s] could not execute SQL (%s)" % (self.fullName,e))
          return False
 
-      #self.lastResult = (colIndex, resultRows)
-      #self.tracer.debug("[%s] lastResult.resultRows=%s " % (self.fullName, resultRows))
+      self.lastResult = (colIndex, resultRows)
+      self.tracer.debug("[%s] lastResult.colIndex=%s" % (self.fullName,colIndex))
+      self.tracer.debug("[%s] lastResult.resultRows=%s " % (self.fullName,resultRows))
 
       # Update internal state
       if not self.updateState():
@@ -233,3 +243,12 @@ class MSSQLProviderCheck(ProviderCheck):
       return True
 
 
+# Update the internal state of this check (including last run times)
+   def updateState(self) -> bool:
+      self.tracer.info("[%s] updating internal state" % self.fullName)
+
+      # Always store lastRunLocal; 
+      lastRunLocal = datetime.utcnow()
+      self.state["lastRunLocal"] = lastRunLocal
+      self.tracer.info("[%s] internal state successfully updated" % self.fullName)
+      return True

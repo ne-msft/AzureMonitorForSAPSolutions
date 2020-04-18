@@ -7,7 +7,7 @@ from provider.sqlserver import *
 
 availableProviders = {
                         "SapHana": (saphanaProviderInstance, saphanaProviderCheck),
-                        "MSSQLServer": (MSSQLProviderInstance, MSSQLProviderCheck),
+                        "MsSqlServer": (MSSQLProviderInstance, MSSQLProviderCheck),
                         "PrometheusGeneric": (prometheusProviderInstance, prometheusProviderCheck),
                         "PrometheusHaCluster": (prometheusProviderInstance, prometheusProviderCheck),
                         "PrometheusNode": (prometheusProviderInstance, prometheusProviderCheck)

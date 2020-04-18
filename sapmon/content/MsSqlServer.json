@@ -1,0 +1,55 @@
+{
+	"contentVersion": "0.4.0",
+	"checks":
+	[
+		{
+			"name": "DBConnections",
+			"description": "SQL Server DB Connections",
+			"customLog": "MSSQL_DBConnections",
+			"frequencySecs": 60,
+			"includeInCustomerAnalytics": true,
+			"actions":
+			[
+				{
+					"type": "ExecuteSql",
+					"parameters": {
+						"sql": "select sdb.name, des.login_name, des.session_id, des.program_name, des.is_user_process from master.sys.databases sdb inner join sys.dm_exec_sessions des on des.database_id = sdb.database_id"
+					}
+				}
+                        ]
+		},
+		{
+			"name": "BlockingProcesses",
+			"description": "SQL Server blocking processes",
+			"customLog": "MSSQL_BlockingProcesses",
+			"frequencySecs": 60,
+			"includeInCustomerAnalytics": true,
+			"actions":
+			[
+				{
+					"type": "ExecuteSql",
+					"parameters": {
+						"sql": "select 'blocked' as type,spid,kpid,blocked,cmd,waittime,lastwaittype,waitresource,dbid,uid,cpu,physical_io,memusage,login_time,last_batch,ecid,open_tran,status,hostname,program_name,hostprocess,sql_handle from sys.sysprocesses where (blocked != 0 and blocked != spid) union all select 'BLOCKER',spid,kpid,blocked,cmd,waittime,lastwaittype,waitresource,dbid,uid,cpu,physical_io,memusage,login_time,last_batch,ecid,open_tran,status, hostname,program_name,hostprocess,sql_handle from sys.sysprocesses  where (spid in (select distinct blocked from sys.sysprocesses where blocked != 0 and blocked != spid) and blocked != spid)"
+					}
+				}
+			]
+		},
+		{
+			"name": "SystemProperties",
+			"description": "SQL Server System properties",
+			"customLog": "MSSQL_SystemProps",
+			"frequencySecs": 3600,
+			"includeInCustomerAnalytics": true,
+			"actions":
+			[
+				{
+					"type": "ExecuteSql",
+					"parameters": {
+						"sql": "select N'BuildClrVersion' as Setting, convert(nvarchar(100),serverproperty(N'BuildClrVersion')) as Value union select N'Collation', convert(nvarchar(100),serverproperty(N'Collation')) union select N'CollationID', convert(nvarchar(100),serverproperty(N'CollationID')) union select N'ComparisonStyle', convert(nvarchar(100),serverproperty(N'ComparisonStyle')) union select N'ComputerNamePhysicalNetBIOS', convert(nvarchar(100),serverproperty(N'ComputerNamePhysicalNetBIOS')) union select N'Edition', convert(nvarchar(100),serverproperty(N'Edition')) union select N'EditionID', convert(nvarchar(100),serverproperty(N'EditionID')) union select N'EngineEdition', convert(nvarchar(100),serverproperty(N'EngineEdition')) union select N'HadrManagerStatus', convert(nvarchar(100),serverproperty(N'HadrManagerStatus')) union select N'InstanceName', convert(nvarchar(100),serverproperty(N'InstanceName')) union select N'IsClustered', convert(nvarchar(100),serverproperty(N'IsClustered')) union select N'IsFullTextInstalled', convert(nvarchar(100),serverproperty(N'IsFullTextInstalled')) union select N'IsHadrEnabled', convert(nvarchar(100),serverproperty(N'IsHadrEnabled')) union select N'IsIntegratedSecurityOnly', convert(nvarchar(100),serverproperty(N'IsIntegratedSecurityOnly')) union select N'IsLocalDB', convert(nvarchar(100),serverproperty(N'IsLocalDB')) union select N'IsSingleUser', convert(nvarchar(100),serverproperty(N'IsSingleUser')) union select N'LCID', convert(nvarchar(100),serverproperty(N'LCID')) union select N'MachineName', convert(nvarchar(100),serverproperty(N'MachineName')) union select N'NumLicenses', convert(nvarchar(100),serverproperty(N'NumLicenses')) union select N'ProcessID', convert(nvarchar(100),serverproperty(N'ProcessID')) union select N'ProductVersion', convert(nvarchar(100),serverproperty(N'ProductVersion')) union select N'ProductLevel', convert(nvarchar(100),serverproperty(N'ProductLevel')) union select N'ResourceLastUpdateDateTime', convert(nvarchar(100),serverproperty(N'ResourceLastUpdateDateTime')) union select N'ResourceVersion', convert(nvarchar(100),serverproperty(N'ResourceVersion')) union select N'ServerName', convert(nvarchar(100),serverproperty(N'ServerName')) union select N'SqlCharSet', convert(nvarchar(100),serverproperty(N'SqlCharSet')) union select N'SqlCharSetName', convert(nvarchar(100),serverproperty(N'SqlCharSetName')) union select N'SqlSortOrder', convert(nvarchar(100),serverproperty(N'SqlSortOrder')) union select N'SqlSortOrderName', convert(nvarchar(100),serverproperty(N'SqlSortOrderName')) union select N'FilestreamShareName', convert(nvarchar(100),serverproperty(N'FilestreamShareName')) union select N'FilestreamConfiguredLevel', convert(nvarchar(100),serverproperty(N'FilestreamConfiguredLevel')) union select N'FilestreamEffectiveLevel', convert(nvarchar(100),serverproperty(N'FilestreamEffectiveLevel'))"
+                                                      }
+                                }
+                        ]
+                }
+        ]
+}
+
