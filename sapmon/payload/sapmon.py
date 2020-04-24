@@ -298,9 +298,10 @@ def main() -> None:
                              type = str,
                              help = "Properties of the monitoring provider")
    prvAddParser.add_argument("--metadata",
-                             required = True,
+                             required = False,
                              type = str,
-                             help = "Metadata of the monitoring provider")
+                             help = "Metadata of the monitoring provider",
+                             default = "{}")
    addVerboseToParser(prvAddParser)
    prvAddParser.set_defaults(func = addProvider)
    prvDelParser = prvSubParsers.add_parser("delete",
