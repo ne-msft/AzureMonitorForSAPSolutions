@@ -71,14 +71,14 @@ class prometheusProviderCheck(ProviderCheck):
         return super().__init__(provider, **kwargs)
 
     def _actionFetchMetrics(self,
-                            includePrefixes: str) -> bool:
+                            includePrefixes: str):
         self.tracer.info("[%s] Fetching metrics" % self.fullName)
         metricsData = self.providerInstance.fetch_metrics()
         self.lastResult = (metricsData, includePrefixes)
         if metricsData is None:
-            self.tracer.info("[%s] Unable to fetch metrics" % self.fullName)
-            return False
-        return self.updateState()
+            raise Exception("Unable to fetch metrics")
+        if not self.updateState():
+            raise Exception("Failed to update state")
 
     # Convert last result into a JSON string (as required by Log Analytics Data Collector API)
     def generateJsonString(self) -> str:

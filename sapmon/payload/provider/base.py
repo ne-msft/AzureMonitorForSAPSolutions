@@ -243,9 +243,13 @@ class ProviderCheck(ABC):
          self.tracer.debug("[%s] calling action %s" % (self.fullName,
                                                        methodName))
          method = getattr(self, methodName)
-         if method(**parameters) == False:
-            self.tracer.info("[%s] error executing action %s, skipping remaining actions" % (self.fullName,
-                                                                                             methodName))
+         try :
+            method(**parameters)
+         except Exception as e:
+            self.tracer.info("[%s] error executing action %s, Exception %s, skipping remaining actions" % (self.fullName,
+                                                                                                           e,
+                                                                                                           methodName))
+            break
       return self.generateJsonString()
 
    # Method to generate a JSON object that can be ingested into Log Analytics

@@ -313,7 +313,7 @@ class saphanaProviderCheck(ProviderCheck):
    def _actionExecuteSql(self,
                     sql: str,
                     isTimeSeries: bool = False,
-                    initialTimespanSecs: int = 60) -> bool:
+                    initialTimespanSecs: int = 60):
       self.tracer.info("[%s] connecting to HANA and executing SQL" % self.fullName)
 
       # Marking which column will be used for TimeGenerated
@@ -322,27 +322,21 @@ class saphanaProviderCheck(ProviderCheck):
       # Find and connect to HANA server
       (connection, cursor, host) = self._getHanaConnection()
       if not connection:
-         return False
+         raise Exception("Unable to get HANA connection")
 
       # Prepare SQL statement
       preparedSql = self._prepareSql(sql,
                                      isTimeSeries,
                                      initialTimespanSecs)
       if not preparedSql:
-         return False
+         raise Exception("Unable to prepare SQL statement")
 
       # Execute SQL statement
-      try:
-         self.tracer.debug("[%s] executing SQL statement %s" % (self.fullName,
-                                                                preparedSql))
-         cursor.execute(preparedSql)
-         colIndex = {col[0] : idx for idx, col in enumerate(cursor.description)}
-         resultRows = cursor.fetchall()
-      except Exception as e:
-         self.tracer.error("[%s] could not execute SQL %s (%s)" % (self.fullName,
-                                                                   preparedSql,
-                                                                   e))
-         return False
+      self.tracer.debug("[%s] executing SQL statement %s" % (self.fullName,
+                                                             preparedSql))
+      cursor.execute(preparedSql)
+      colIndex = {col[0] : idx for idx, col in enumerate(cursor.description)}
+      resultRows = cursor.fetchall()
 
       self.lastResult = (colIndex, resultRows)
       self.tracer.debug("[%s] lastResult.colIndex=%s" % (self.fullName,
@@ -352,22 +346,16 @@ class saphanaProviderCheck(ProviderCheck):
 
       # Update internal state
       if not self.updateState():
-         return False
+         raise Exception("Failed to update state")
 
       # Disconnect from HANA server to avoid memory leaks
-      try:
-         self.tracer.debug("[%s] closing HANA connection" % self.fullName)
-         connection.close()
-      except Exception as e:
-         self.tracer.error("[%s] could not close connection to HANA instance (%s)" % (self.fullName,
-                                                                                      e))
-         return False
+      self.tracer.debug("[%s] closing HANA connection" % self.fullName)
+      connection.close()
 
       self.tracer.info("[%s] successfully ran SQL for check" % self.fullName)
-      return True
 
    # Parse result of the query against M_LANDSCAPE_HOST_CONFIGURATION and store it internally
-   def _actionParseHostConfig(self) -> bool:
+   def _actionParseHostConfig(self):
       self.tracer.info("[%s] parsing HANA host configuration and storing it in provider state" % self.fullName)
 
       # Iterate through the results and store a mini version in the global provider state
@@ -382,11 +370,10 @@ class saphanaProviderCheck(ProviderCheck):
          hosts.append(host)
       self.providerInstance.state["hostConfig"] = hosts
       self.tracer.debug("hosts=%s" % hosts)
-      return True
 
    # Probe SQL Connection to all nodes in HANA landscape
    def _actionProbeSqlConnection(self,
-                            probeTimeout: int = None) -> bool:
+                            probeTimeout: int = None):
       self.tracer.info("[%s] probing SQL connection to all HANA nodes" % self.fullName)
 
       # If no probeTimeout parameter is defined for this action, use the default
@@ -398,8 +385,7 @@ class saphanaProviderCheck(ProviderCheck):
 
       # This check requires the HANA host configuration to be run first
       if "hostConfig" not in self.providerInstance.state:
-         self.tracer.error("[%s] HANA host config check has not been executed yet" % self.fullName)
-         return False
+         raise Exception("HANA host config check has not been executed yet")
 
       # Iterate through all hosts (alphabetical order) from the host config
       hostConfig = self.providerInstance.state["hostConfig"]
@@ -481,5 +467,4 @@ class saphanaProviderCheck(ProviderCheck):
 
       # Update internal state
       if not self.updateState():
-         return False
-      return True
+         raise Exception("Failed to update state")
