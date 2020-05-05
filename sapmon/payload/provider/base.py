@@ -246,9 +246,9 @@ class ProviderCheck(ABC):
          try :
             method(**parameters)
          except Exception as e:
-            self.tracer.info("[%s] error executing action %s, Exception %s, skipping remaining actions" % (self.fullName,
-                                                                                                           e,
-                                                                                                           methodName))
+            self.tracer.error("[%s] error executing action %s, Exception %s, skipping remaining actions" % (self.fullName,
+                                                                                                            e,
+                                                                                                            methodName))
             break
       return self.generateJsonString()
 
