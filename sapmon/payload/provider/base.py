@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from datetime import date, datetime, timedelta
 import json
 import logging
+from retry.api import retry_call
 from typing import Callable, Dict, List, Optional
 
 # Payload modules
@@ -243,8 +244,12 @@ class ProviderCheck(ABC):
          self.tracer.debug("[%s] calling action %s" % (self.fullName,
                                                        methodName))
          method = getattr(self, methodName)
+         tries = action.get("tries", 3)
+         delay = action.get("delay", 1)
+         backoff = action.get("backoff", 2)
+
          try :
-            method(**parameters)
+            retry_call(method, fargs=parameters, tries=tries, delay=delay, backoff=backoff, logger=self.tracer)
          except Exception as e:
             self.tracer.error("[%s] error executing action %s, Exception %s, skipping remaining actions" % (self.fullName,
                                                                                                             e,
