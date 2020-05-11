@@ -313,7 +313,7 @@ class saphanaProviderCheck(ProviderCheck):
    def _actionExecuteSql(self,
                     sql: str,
                     isTimeSeries: bool = False,
-                    initialTimespanSecs: int = 60):
+                    initialTimespanSecs: int = 60) -> None:
       self.tracer.info("[%s] connecting to HANA and executing SQL" % self.fullName)
 
       # Marking which column will be used for TimeGenerated
@@ -355,7 +355,7 @@ class saphanaProviderCheck(ProviderCheck):
       self.tracer.info("[%s] successfully ran SQL for check" % self.fullName)
 
    # Parse result of the query against M_LANDSCAPE_HOST_CONFIGURATION and store it internally
-   def _actionParseHostConfig(self):
+   def _actionParseHostConfig(self) -> None:
       self.tracer.info("[%s] parsing HANA host configuration and storing it in provider state" % self.fullName)
 
       # Iterate through the results and store a mini version in the global provider state
@@ -373,7 +373,7 @@ class saphanaProviderCheck(ProviderCheck):
 
    # Probe SQL Connection to all nodes in HANA landscape
    def _actionProbeSqlConnection(self,
-                            probeTimeout: int = None):
+                            probeTimeout: int = None) -> None:
       self.tracer.info("[%s] probing SQL connection to all HANA nodes" % self.fullName)
 
       # If no probeTimeout parameter is defined for this action, use the default

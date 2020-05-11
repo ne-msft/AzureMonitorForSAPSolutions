@@ -71,7 +71,7 @@ class prometheusProviderCheck(ProviderCheck):
         return super().__init__(provider, **kwargs)
 
     def _actionFetchMetrics(self,
-                            includePrefixes: str):
+                            includePrefixes: str) -> None:
         self.tracer.info("[%s] Fetching metrics" % self.fullName)
         metricsData = self.providerInstance.fetch_metrics()
         self.lastResult = (metricsData, includePrefixes)
