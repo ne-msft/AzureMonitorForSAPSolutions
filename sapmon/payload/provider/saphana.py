@@ -25,6 +25,11 @@ COL_LOCAL_UTC               = "_LOCAL_UTC"
 COL_SERVER_UTC              = "_SERVER_UTC"
 COL_TIMESERIES_UTC          = "_TIMESERIES_UTC"
 
+# Default retry settings
+RETRIES = 3
+DELAY   = 1
+BACKOFF = 2
+
 ###############################################################################
 
 class saphanaProviderInstance(ProviderInstance):
@@ -36,12 +41,13 @@ class saphanaProviderInstance(ProviderInstance):
    def __init__(self,
                 tracer: logging.Logger,
                 providerInstance: Dict[str, str],
-                skipContent: bool = False,
-                **kwargs):
+                skipContent: bool = False):
       super().__init__(tracer,
                        providerInstance,
-                       skipContent,
-                       **kwargs)
+                       RETRIES,
+                       DELAY,
+                       BACKOFF,
+                       skipContent)
 
    # Parse provider properties and fetch DB password from KeyVault, if necessary
    def parseProperties(self):

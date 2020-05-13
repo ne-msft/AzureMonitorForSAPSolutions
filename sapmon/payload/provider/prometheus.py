@@ -30,6 +30,9 @@ class prometheusProviderInstance(ProviderInstance):
                **kwargs):
         super().__init__(tracer,
                          providerInstance,
+                         1,
+                         2,
+                         3,
                          skipContent,
                          **kwargs)
 

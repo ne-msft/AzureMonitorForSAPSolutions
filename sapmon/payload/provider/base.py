@@ -23,10 +23,14 @@ class ProviderInstance(ABC):
    contentVersion = None
    checks = []
    state = {}
+   retrySettings = {}
    
    def __init__(self,
                 tracer: logging.Logger,
                 providerInstance: Dict[str, str],
+                retries: int,
+                delay: int,
+                backoff: int,
                 skipContent: bool = False):
       # This constructor gets called after the child class
       self.tracer = tracer
@@ -36,6 +40,11 @@ class ProviderInstance(ABC):
       self.providerType = providerInstance["type"]
       self.fullName = "%s/%s" % (self.providerType, self.name)
       self.state = {}
+      self.retrySettings = {
+         "retries": retries,
+         "delay": delay,
+         "backoff": backoff
+      }
       if not self.parseProperties():
          raise ValueError("failed to parse properties of the provider instance")
       if not skipContent and not self.initContent():
@@ -244,9 +253,9 @@ class ProviderCheck(ABC):
          self.tracer.debug("[%s] calling action %s" % (self.fullName,
                                                        methodName))
          method = getattr(self, methodName)
-         tries = action.get("tries", 3)
-         delay = action.get("delay", 1)
-         backoff = action.get("backoff", 2)
+         tries = action.get("tries", self.providerInstance.retrySettings["retries"])
+         delay = action.get("delay", self.providerInstance.retrySettings["delay"])
+         backoff = action.get("backoff", self.providerInstance.retrySettings["backoff"])
 
          try :
             retry_call(method, fargs=parameters, tries=tries, delay=delay, backoff=backoff, logger=self.tracer)
