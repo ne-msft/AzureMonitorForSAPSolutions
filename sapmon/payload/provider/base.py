@@ -28,9 +28,7 @@ class ProviderInstance(ABC):
    def __init__(self,
                 tracer: logging.Logger,
                 providerInstance: Dict[str, str],
-                retries: int,
-                delay: int,
-                backoff: int,
+                retrySettings: Dict[str, int],
                 skipContent: bool = False):
       # This constructor gets called after the child class
       self.tracer = tracer
@@ -40,11 +38,7 @@ class ProviderInstance(ABC):
       self.providerType = providerInstance["type"]
       self.fullName = "%s/%s" % (self.providerType, self.name)
       self.state = {}
-      self.retrySettings = {
-         "retries": retries,
-         "delay": delay,
-         "backoff": backoff
-      }
+      self.retrySettings = retrySettings
       if not self.parseProperties():
          raise ValueError("failed to parse properties of the provider instance")
       if not skipContent and not self.initContent():

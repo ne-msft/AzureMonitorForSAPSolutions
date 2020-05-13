@@ -19,6 +19,13 @@ from prometheus_client.samples import Sample
 from prometheus_client.parser import text_string_to_metric_families
 ###############################################################################
 
+# Default retry settings
+RETRIES = 3
+DELAY   = 1
+BACKOFF = 2
+
+###############################################################################
+
 class prometheusProviderInstance(ProviderInstance):
     metricsUrl = None
     HTTP_TIMEOUT = (2, 5) # timeouts: 2s connect, 5s read
@@ -26,15 +33,18 @@ class prometheusProviderInstance(ProviderInstance):
     def __init__(self,
                tracer: logging.Logger,
                providerInstance: Dict[str, str],
-               skipContent: bool = False,
-               **kwargs):
+               skipContent: bool = False):
+
+        retrySettings = {
+            "reties": RETRIES,
+            "delay": DELAY,
+            "backoff": BACKOFF
+        }
+
         super().__init__(tracer,
                          providerInstance,
-                         1,
-                         2,
-                         3,
-                         skipContent,
-                         **kwargs)
+                         retrySettings,
+                         skipContent)
 
     def parseProperties(self):
         ### Fixme: Should this validate the url format?
