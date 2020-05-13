@@ -36,7 +36,7 @@ class prometheusProviderInstance(ProviderInstance):
                skipContent: bool = False):
 
         retrySettings = {
-            "reties": RETRIES,
+            "retries": RETRIES,
             "delay": DELAY,
             "backoff": BACKOFF
         }
