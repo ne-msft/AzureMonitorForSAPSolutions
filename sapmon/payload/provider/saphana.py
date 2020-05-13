@@ -41,7 +41,8 @@ class saphanaProviderInstance(ProviderInstance):
    def __init__(self,
                 tracer: logging.Logger,
                 providerInstance: Dict[str, str],
-                skipContent: bool = False):
+                skipContent: bool = False,
+                **kwargs):
 
       retrySettings = {
          "retries": RETRIES,
@@ -52,7 +53,8 @@ class saphanaProviderInstance(ProviderInstance):
       super().__init__(tracer,
                        providerInstance,
                        retrySettings,
-                       skipContent)
+                       skipContent,
+                       **kwargs)
 
    # Parse provider properties and fetch DB password from KeyVault, if necessary
    def parseProperties(self):

@@ -33,7 +33,8 @@ class prometheusProviderInstance(ProviderInstance):
     def __init__(self,
                tracer: logging.Logger,
                providerInstance: Dict[str, str],
-               skipContent: bool = False):
+               skipContent: bool = False,
+               **kwargs):
 
         retrySettings = {
             "retries": RETRIES,
@@ -44,7 +45,8 @@ class prometheusProviderInstance(ProviderInstance):
         super().__init__(tracer,
                          providerInstance,
                          retrySettings,
-                         skipContent)
+                         skipContent,
+                         **kwargs)
 
     def parseProperties(self):
         ### Fixme: Should this validate the url format?
