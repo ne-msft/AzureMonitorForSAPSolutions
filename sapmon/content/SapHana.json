@@ -19,6 +19,21 @@
                 }
             ]
         },
+        {
+            "name": "SystemOverview",
+            "description": "SAP HANA System Overview",
+            "customLog": "SapHana_SystemOverview",
+            "frequencySecs": 86400,
+            "includeInCustomerAnalytics": true,
+            "actions": [
+                {
+                    "type": "ExecuteSql",
+                    "parameters": {
+                        "sql": "SELECT * FROM SYS.M_SYSTEM_OVERVIEW WHERE SECTION = 'System' OR SECTION = 'Services'"
+                    }
+                }
+            ]
+        },
         {  
             "name": "LoadHistory",
             "description": "SAP HANA Load History",
