@@ -20,9 +20,9 @@ from prometheus_client.parser import text_string_to_metric_families
 ###############################################################################
 
 # Default retry settings
-RETRIES = 3
-DELAY   = 1
-BACKOFF = 2
+RETRY_RETRIES_SECS = 3
+RETRY_DELAY_SECS   = 1
+RETRY_BACKOFF_MULTIPLIER = 2
 
 ###############################################################################
 
@@ -37,9 +37,9 @@ class prometheusProviderInstance(ProviderInstance):
                **kwargs):
 
         retrySettings = {
-            "retries": RETRIES,
-            "delay": DELAY,
-            "backoff": BACKOFF
+            "retriesInSeconds": RETRY_RETRIES_SECS,
+            "delayInSeconds": RETRY_DELAY_SECS,
+            "backoffMulitplier": RETRY_BACKOFF_MULTIPLIER
         }
 
         super().__init__(tracer,

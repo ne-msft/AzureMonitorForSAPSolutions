@@ -26,9 +26,9 @@ COL_SERVER_UTC              = "_SERVER_UTC"
 COL_TIMESERIES_UTC          = "_TIMESERIES_UTC"
 
 # Default retry settings
-RETRIES = 3
-DELAY   = 1
-BACKOFF = 2
+RETRY_RETRIES_SECS = 3
+RETRY_DELAY_SECS   = 1
+RETRY_BACKOFF_MULTIPLIER = 2
 
 ###############################################################################
 
@@ -45,9 +45,9 @@ class saphanaProviderInstance(ProviderInstance):
                 **kwargs):
 
       retrySettings = {
-         "retries": RETRIES,
-         "delay": DELAY,
-         "backoff": BACKOFF
+         "retriesInSeconds": RETRY_RETRIES_SECS,
+         "delayInSeconds": RETRY_DELAY_SECS,
+         "backoffMulitplier": RETRY_BACKOFF_MULTIPLIER
       }
 
       super().__init__(tracer,
