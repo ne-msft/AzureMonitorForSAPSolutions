@@ -429,15 +429,15 @@ class saphanaProviderCheck(ProviderCheck):
                elif "89001" in msg or "cannot resolve host name" in msg \
                or "89006" in msg or "connection refused" in msg \
                or "timeout expired" in msg:
-                 self.tracer.error("[%s] HANA nameserver %s:%d is not responding to probe (%s)" % (self.fullName,
-                                                                                                   host,
-                                                                                                   portNameserver,
-                                                                                                   e))
+                 self.tracer.warning("[%s] HANA nameserver %s:%d is not responding to probe (%s)" % (self.fullName,
+                                                                                                     host,
+                                                                                                     portNameserver,
+                                                                                                     e))
                else:
-                 self.tracer.error("[%s] unexpected error when probing HANA nameserver %s:%d (%s)" % (self.fullName,
-                                                                                                      host,
-                                                                                                      portNameserver,
-                                                                                                      e))
+                 self.tracer.warning("[%s] unexpected error when probing HANA nameserver %s:%d (%s)" % (self.fullName,
+                                                                                                        host,
+                                                                                                        portNameserver,
+                                                                                                        e))
             if success:
                latency = (time.time() - startTime) * 1000
                break
