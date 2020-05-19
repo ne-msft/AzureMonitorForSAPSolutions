@@ -247,7 +247,7 @@ class ProviderCheck(ABC):
          self.tracer.debug("[%s] calling action %s" % (self.fullName,
                                                        methodName))
          method = getattr(self, methodName)
-         tries = action.get("retriesInSeconds", self.providerInstance.retrySettings["retriesInSeconds"])
+         tries = action.get("retries", self.providerInstance.retrySettings["retries"])
          delay = action.get("delayInSeconds", self.providerInstance.retrySettings["delayInSeconds"])
          backoff = action.get("backoffMulitplier", self.providerInstance.retrySettings["backoffMulitplier"])
 

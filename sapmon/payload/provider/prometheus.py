@@ -20,7 +20,7 @@ from prometheus_client.parser import text_string_to_metric_families
 ###############################################################################
 
 # Default retry settings
-RETRY_RETRIES_SECS = 3
+RETRY_RETRIES = 3
 RETRY_DELAY_SECS   = 1
 RETRY_BACKOFF_MULTIPLIER = 2
 
@@ -37,7 +37,7 @@ class prometheusProviderInstance(ProviderInstance):
                **kwargs):
 
         retrySettings = {
-            "retriesInSeconds": RETRY_RETRIES_SECS,
+            "retries": RETRY_RETRIES,
             "delayInSeconds": RETRY_DELAY_SECS,
             "backoffMulitplier": RETRY_BACKOFF_MULTIPLIER
         }
