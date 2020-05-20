@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from datetime import date, datetime, timedelta
 import json
 import logging
+from retry.api import retry_call
 from typing import Callable, Dict, List, Optional
 
 # Payload modules
@@ -22,10 +23,12 @@ class ProviderInstance(ABC):
    contentVersion = None
    checks = []
    state = {}
+   retrySettings = {}
    
    def __init__(self,
                 tracer: logging.Logger,
                 providerInstance: Dict[str, str],
+                retrySettings: Dict[str, int],
                 skipContent: bool = False):
       # This constructor gets called after the child class
       self.tracer = tracer
@@ -35,6 +38,7 @@ class ProviderInstance(ABC):
       self.providerType = providerInstance["type"]
       self.fullName = "%s/%s" % (self.providerType, self.name)
       self.state = {}
+      self.retrySettings = retrySettings
       if not self.parseProperties():
          raise ValueError("failed to parse properties of the provider instance")
       if not skipContent and not self.initContent():
@@ -243,8 +247,12 @@ class ProviderCheck(ABC):
          self.tracer.debug("[%s] calling action %s" % (self.fullName,
                                                        methodName))
          method = getattr(self, methodName)
+         tries = action.get("retries", self.providerInstance.retrySettings["retries"])
+         delay = action.get("delayInSeconds", self.providerInstance.retrySettings["delayInSeconds"])
+         backoff = action.get("backoffMulitplier", self.providerInstance.retrySettings["backoffMulitplier"])
+
          try :
-            method(**parameters)
+            retry_call(method, fargs=parameters, tries=tries, delay=delay, backoff=backoff, logger=self.tracer)
          except Exception as e:
             self.tracer.error("[%s] error executing action %s, Exception %s, skipping remaining actions" % (self.fullName,
                                                                                                             e,

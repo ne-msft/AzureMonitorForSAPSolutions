@@ -46,3 +46,5 @@ ExecuteCommand "pip3 install azure-identity"
 ExecuteCommand "pip3 install azure-keyvault-secrets"
 # Install prometheus_client
 ExecuteCommand "pip3 install prometheus_client"
+# Install retry
+ExecuteCommand "pip3 install retry"
