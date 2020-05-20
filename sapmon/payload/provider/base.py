@@ -220,7 +220,7 @@ class ProviderCheck(ABC):
       # lastRunLocal = last execution time on collector VM
       # lastRunServer (used in provider) = last execution time on (HANA) server
       self.tracer.debug("[%s] verifying if check is due to be run" % self.fullName)
-      lastRunLocal = self.state["lastRunLocal"]
+      lastRunLocal = self.state.get("lastRunLocal", None)
       self.tracer.debug("[%s] lastRunLocal=%s; frequencySecs=%d; currentLocal=%s" % (self.fullName,
                                                                                      lastRunLocal,
                                                                                      self.frequencySecs,
