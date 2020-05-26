@@ -26,6 +26,9 @@ ExecuteCommand() {
     exit 1
 }
 
+# Update repos for SQL Server
+ExecuteCommand "curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add -"
+ExecuteCommand "curl https://packages.microsoft.com/config/ubuntu/16.04/prod.list > /etc/apt/sources.list.d/mssql-release.list"
 # Update
 ExecuteCommand "apt-get -y update"
 # Install pip
@@ -46,3 +49,7 @@ ExecuteCommand "pip3 install azure-identity"
 ExecuteCommand "pip3 install azure-keyvault-secrets"
 # Install prometheus_client
 ExecuteCommand "pip3 install prometheus_client"
+# Install Python ODBC client
+ExecuteCommand "sudo apt-get install -y python3-pyodbc"
+# Install MS SQL Server driver
+ExecuteCommand "ACCEPT_EULA=Y apt-get install -y msodbcsql17"
