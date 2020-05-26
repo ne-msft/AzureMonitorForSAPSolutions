@@ -85,11 +85,24 @@ class prometheusProviderCheck(ProviderCheck):
                  **kwargs):
         return super().__init__(provider, **kwargs)
 
+
     def _actionFetchMetrics(self,
-                            includePrefixes: str) -> None:
+                            includePrefixes: str,
+                            suppressIfZeroPrefixes: str = None) -> None:
+        # Helper method to streamline regular expression compilation and checks
+        def compile_regexp(pattern, patternName = "Pattern"):
+            if pattern:
+                try:
+                    return re.compile(pattern)
+                except re.error as e:
+                    raise Exception("%s (%s) must be a valid regular expression: %s" %
+                                      (patternName, e.pattern, e.msg))
+            return None
         self.tracer.info("[%s] Fetching metrics" % self.fullName)
+        includeRegex = compile_regexp(includePrefixes, "includePrefixes")
+        suppressIfZeroRegex = compile_regexp(suppressIfZeroPrefixes, "suppressIfZeroPrefixes")
         metricsData = self.providerInstance.fetch_metrics()
-        self.lastResult = (metricsData, includePrefixes)
+        self.lastResult = (metricsData, includeRegex, suppressIfZeroRegex)
         if metricsData is None:
             raise Exception("Unable to fetch metrics")
         if not self.updateState():
@@ -116,37 +129,46 @@ class prometheusProviderCheck(ProviderCheck):
                 "instance": self.providerInstance.instance,
                 "correlation_id": correlation_id
             }
-            # FIXME: Implement custom fields
-            #for (k, v) in promUrl.customFields:
-            #    sample_dict["custom_%s" % k] = v
             return sample_dict
+
+        def filter_prometheus_sample(sample):
+            """
+            Filter out samples matching suppressIfZeroRegex with value == 0
+            """
+            if (suppressIfZeroRegex is not None and
+                    sample.value == 0 and
+                    suppressIfZeroRegex.match(sample.name)):
+                return False
+            return True
 
         def filter_prometheus_metric(metric):
             """
             Filter out names based on our exclude and include lists
             """
-            if includePrefixesRegex:
-                return bool(includePrefixesRegex.match(metric.name))
-            return not bool(self.excludeRegex.match(metric.name))
+            # Remove everything matching excludeRegex
+            if self.excludeRegex.match(metric.name):
+                return False
+
+            # If includeRegex is defined, filter out everything NOT matching
+            if (includeRegex is not None and
+                    includeRegex.match(metric.name) is None):
+                return False
+
+            # If none of the above matched, just let the item through
+            return True
 
         prometheusMetricsText = self.lastResult[0]
-        includePrefixes = self.lastResult[1]
-        # If a prefix was given it has to compile to a valid regular expression
-        if includePrefixes:
-            try:
-                includePrefixesRegex = re.compile(includePrefixes)
-            except re.error:
-                self.tracer.error("[%s] includePrefixes must be a valid regular expression: %s" %
-                                  (self.fullName, includePrefixes))
-                return False
+        includeRegex = self.lastResult[1]
+        suppressIfZeroRegex = self.lastResult[2]
         resultSet = list()
+
         self.tracer.info("[%s] converting result set into JSON" % self.fullName)
         try:
             if not prometheusMetricsText:
                 raise ValueError("Empty result from prometheus instance %s", self.providerInstance.instance)
             for family in filter(filter_prometheus_metric,
                                  text_string_to_metric_families(prometheusMetricsText)):
-                resultSet.extend(map(prometheusSample2Dict, family.samples))
+                resultSet.extend(map(prometheusSample2Dict, filter(filter_prometheus_sample, family.samples)))
         except ValueError as e:
             self.tracer.error("[%s] Could not parse prometheus metrics (%s): %s" % (self.fullName, e, prometheusMetricsText))
             resultSet.append(prometheusSample2Dict(Sample("up", dict(), 0)))
