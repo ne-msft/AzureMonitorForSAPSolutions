@@ -1,35 +1,17 @@
 {
 	"contentVersion": "0.4.0",
-	"checks":
-	[
+	"checks": [
 		{
 			"name": "DBConnections",
 			"description": "SQL Server DB Connections",
 			"customLog": "MSSQL_DBConnections",
 			"frequencySecs": 60,
 			"includeInCustomerAnalytics": true,
-			"actions":
-			[
+			"actions": [
 				{
 					"type": "ExecuteSql",
 					"parameters": {
-						"sql": "select sdb.name, des.login_name, des.session_id, des.program_name, des.is_user_process from master.sys.databases sdb inner join sys.dm_exec_sessions des on des.database_id = sdb.database_id"
-					}
-				}
-                        ]
-		},
-		{
-			"name": "BlockingProcesses",
-			"description": "SQL Server blocking processes",
-			"customLog": "MSSQL_BlockingProcesses",
-			"frequencySecs": 60,
-			"includeInCustomerAnalytics": true,
-			"actions":
-			[
-				{
-					"type": "ExecuteSql",
-					"parameters": {
-						"sql": "select 'blocked' as type,spid,kpid,blocked,cmd,waittime,lastwaittype,waitresource,dbid,uid,cpu,physical_io,memusage,login_time,last_batch,ecid,open_tran,status,hostname,program_name,hostprocess,sql_handle from sys.sysprocesses where (blocked != 0 and blocked != spid) union all select 'BLOCKER',spid,kpid,blocked,cmd,waittime,lastwaittype,waitresource,dbid,uid,cpu,physical_io,memusage,login_time,last_batch,ecid,open_tran,status, hostname,program_name,hostprocess,sql_handle from sys.sysprocesses  where (spid in (select distinct blocked from sys.sysprocesses where blocked != 0 and blocked != spid) and blocked != spid)"
+						"sql": "select name,user_access_desc,(select count(distinct session_id) from sys.dm_exec_sessions as des where des.database_id = sdb.database_id and program_name like 'R3%') as SAPConnections,(select count(distinct session_id) from sys.dm_exec_sessions as des where des.database_id = sdb.database_id and (program_name not like 'R3%' or program_name is null)) as NonSAPConnections, (select count(distinct login_name) from sys.dm_exec_sessions as des where des.database_id = sdb.database_id) as UniqueUser,(select count(distinct session_id) from sys.dm_exec_sessions as des where des.database_id = sdb.database_id and is_user_process = 0) as SystemConnections,(select count(distinct session_id) from sys.dm_exec_sessions as des where des.database_id = sdb.database_id and is_user_process = 1) as UserConnections from master.sys.databases sdb"
 					}
 				}
 			]
@@ -40,16 +22,191 @@
 			"customLog": "MSSQL_SystemProps",
 			"frequencySecs": 3600,
 			"includeInCustomerAnalytics": true,
-			"actions":
-			[
+			"actions": [
 				{
 					"type": "ExecuteSql",
 					"parameters": {
-						"sql": "select N'BuildClrVersion' as Setting, convert(nvarchar(100),serverproperty(N'BuildClrVersion')) as Value union select N'Collation', convert(nvarchar(100),serverproperty(N'Collation')) union select N'CollationID', convert(nvarchar(100),serverproperty(N'CollationID')) union select N'ComparisonStyle', convert(nvarchar(100),serverproperty(N'ComparisonStyle')) union select N'ComputerNamePhysicalNetBIOS', convert(nvarchar(100),serverproperty(N'ComputerNamePhysicalNetBIOS')) union select N'Edition', convert(nvarchar(100),serverproperty(N'Edition')) union select N'EditionID', convert(nvarchar(100),serverproperty(N'EditionID')) union select N'EngineEdition', convert(nvarchar(100),serverproperty(N'EngineEdition')) union select N'HadrManagerStatus', convert(nvarchar(100),serverproperty(N'HadrManagerStatus')) union select N'InstanceName', convert(nvarchar(100),serverproperty(N'InstanceName')) union select N'IsClustered', convert(nvarchar(100),serverproperty(N'IsClustered')) union select N'IsFullTextInstalled', convert(nvarchar(100),serverproperty(N'IsFullTextInstalled')) union select N'IsHadrEnabled', convert(nvarchar(100),serverproperty(N'IsHadrEnabled')) union select N'IsIntegratedSecurityOnly', convert(nvarchar(100),serverproperty(N'IsIntegratedSecurityOnly')) union select N'IsLocalDB', convert(nvarchar(100),serverproperty(N'IsLocalDB')) union select N'IsSingleUser', convert(nvarchar(100),serverproperty(N'IsSingleUser')) union select N'LCID', convert(nvarchar(100),serverproperty(N'LCID')) union select N'MachineName', convert(nvarchar(100),serverproperty(N'MachineName')) union select N'NumLicenses', convert(nvarchar(100),serverproperty(N'NumLicenses')) union select N'ProcessID', convert(nvarchar(100),serverproperty(N'ProcessID')) union select N'ProductVersion', convert(nvarchar(100),serverproperty(N'ProductVersion')) union select N'ProductLevel', convert(nvarchar(100),serverproperty(N'ProductLevel')) union select N'ResourceLastUpdateDateTime', convert(nvarchar(100),serverproperty(N'ResourceLastUpdateDateTime')) union select N'ResourceVersion', convert(nvarchar(100),serverproperty(N'ResourceVersion')) union select N'ServerName', convert(nvarchar(100),serverproperty(N'ServerName')) union select N'SqlCharSet', convert(nvarchar(100),serverproperty(N'SqlCharSet')) union select N'SqlCharSetName', convert(nvarchar(100),serverproperty(N'SqlCharSetName')) union select N'SqlSortOrder', convert(nvarchar(100),serverproperty(N'SqlSortOrder')) union select N'SqlSortOrderName', convert(nvarchar(100),serverproperty(N'SqlSortOrderName')) union select N'FilestreamShareName', convert(nvarchar(100),serverproperty(N'FilestreamShareName')) union select N'FilestreamConfiguredLevel', convert(nvarchar(100),serverproperty(N'FilestreamConfiguredLevel')) union select N'FilestreamEffectiveLevel', convert(nvarchar(100),serverproperty(N'FilestreamEffectiveLevel'))"
-                                                      }
-                                }
-                        ]
-                }
-        ]
+						"sql": "select N'BuildClrVersion' as Setting,convert(nvarchar(100),serverproperty(N'BuildClrVersion')) as Value union select N'Collation',convert(nvarchar(100),serverproperty(N'Collation')) union select N'CollationID',convert(nvarchar(100),serverproperty(N'CollationID')) union select N'ComparisonStyle',convert(nvarchar(100),serverproperty(N'ComparisonStyle')) union select N'ComputerNamePhysicalNetBIOS',convert(nvarchar(100),serverproperty(N'ComputerNamePhysicalNetBIOS')) union select N'Edition',convert(nvarchar(100),serverproperty(N'Edition')) union select N'EditionID',convert(nvarchar(100),serverproperty(N'EditionID')) union select N'EngineEdition',convert(nvarchar(100),serverproperty(N'EngineEdition')) union select N'HadrManagerStatus',convert(nvarchar(100),serverproperty(N'HadrManagerStatus')) union select N'InstanceName',convert(nvarchar(100),serverproperty(N'InstanceName')) union select N'IsClustered',convert(nvarchar(100),serverproperty(N'IsClustered')) union select N'IsFullTextInstalled',convert(nvarchar(100),serverproperty(N'IsFullTextInstalled')) union select N'IsHadrEnabled',convert(nvarchar(100),serverproperty(N'IsHadrEnabled')) union select N'IsIntegratedSecurityOnly',convert(nvarchar(100),serverproperty(N'IsIntegratedSecurityOnly')) union select N'IsLocalDB',convert(nvarchar(100),serverproperty(N'IsLocalDB')) union select N'IsSingleUser',convert(nvarchar(100),serverproperty(N'IsSingleUser')) union select N'LCID',convert(nvarchar(100),serverproperty(N'LCID')) union select N'MachineName',convert(nvarchar(100),serverproperty(N'MachineName')) union select N'NumLicenses',convert(nvarchar(100),serverproperty(N'NumLicenses')) union select N'ProcessID',convert(nvarchar(100),serverproperty(N'ProcessID')) union select N'ProductVersion',convert(nvarchar(100),serverproperty(N'ProductVersion')) union select N'ProductLevel',convert(nvarchar(100),serverproperty(N'ProductLevel')) union select N'ResourceLastUpdateDateTime',convert(nvarchar(100),serverproperty(N'ResourceLastUpdateDateTime')) union select N'ResourceVersion',convert(nvarchar(100),serverproperty(N'ResourceVersion')) union select N'ServerName',convert(nvarchar(100),serverproperty(N'ServerName')) union select N'SqlCharSet',convert(nvarchar(100),serverproperty(N'SqlCharSet')) union select N'SqlCharSetName',convert(nvarchar(100),serverproperty(N'SqlCharSetName')) union select N'SqlSortOrder',convert(nvarchar(100),serverproperty(N'SqlSortOrder')) union select N'SqlSortOrderName',convert(nvarchar(100),serverproperty(N'SqlSortOrderName')) union select N'FilestreamShareName',convert(nvarchar(100),serverproperty(N'FilestreamShareName')) union select N'FilestreamConfiguredLevel',convert(nvarchar(100),serverproperty(N'FilestreamConfiguredLevel')) union select N'FilestreamEffectiveLevel',convert(nvarchar(100),serverproperty(N'FilestreamEffectiveLevel')) union SELECT N'WindowsRelease',case windows_release when 10.0 then N'Windows Server 2016 or higher' when 6.3 then N'Windows Server 2012 R2' when 6.2 then N'Windows Server 2012' when 6.1 then N'Windows Server 2008 R2' when 6.0 then N'Windows Server 2008' else N'' end FROM sys.dm_os_windows_info UNION SELECT N'WindowsSPLevel',windows_service_pack_level FROM sys.dm_os_windows_info UNION SELECT N'WindowsSKU',case windows_sku WHEN 7 THEN N'Server Standard' WHEN 8 THEN N'Server Datacenter' WHEN 10 THEN N'Server Enterprise' WHEN 12 THEN N'Server Datacenter (Core)' WHEN 13 THEN N'Server Standard (Core)' WHEN 14 THEN N'Server Enterprise (Core)' WHEN 36 THEN N'Server Standard' WHEN 37 THEN N'Server Datacenter' WHEN 38 THEN N'Server Enterprise' WHEN 39 THEN N'Server Datacenter (Core)' WHEN 40 THEN N'Server Standard (Core)' WHEN 41 THEN N'Server Enterprise (Core)' WHEN 79 THEN N'Server Standard (Eval)' WHEN 80 THEN N'Server Datacenter (Eval)' WHEN 145 THEN N'Server Datacenter (Core)' WHEN 146 THEN N'Server Standard (Core)' ELSE N'' END FROM sys.dm_os_windows_info UNION SELECT N'WindowsOSLanguage',sl.alias as language FROM sys.dm_os_windows_info dowi inner join sys.syslanguages sl on dowi.os_language_version = sl.lcid;"
+					}
+				}
+			]
+		},
+		{
+			"name": "FileOverview",
+			"description": "Databasefiles",
+			"customLog": "MSSQL_FileOverview",
+			"frequencySecs": 3600,
+			"includeInCustomerAnalytics": true,
+			"actions": [
+				{
+					"type": "ExecuteSql",
+					"parameters": {
+						"sql": "select ISNULL(sfg.name,'N/A') as filegroup, sf.name, sf.physical_name, sf.type_desc, sf.file_id, sf.size/128 as file_size_mb, case when sf.type !=1 then fileproperty(sf.name,'SpaceUsed')/128 else 0 end as file_free_mb, case when sf.is_percent_growth = 1 then convert(nvarchar,sf.growth) + N' %' else convert(nvarchar,sf.growth/128) + N' mb' end as growth, case when sf.max_size = -1 then -1 else sf.max_size/128 end as max_file_size_mb, fileproperty( sf.name, 'IsPrimaryFile' ) as is_primary_file, sf.is_read_only as is_readonly, ISNULL(sfg.is_default,0) as is_default_filegroup from sys.database_files as sf left outer join sys.filegroups sfg on sf.data_space_id = sfg.data_space_id"
+					}
+				}
+			]
+		},
+		{
+			"name": "MemoryOverview",
+			"description": "Memory Usage of SQL Server",
+			"customLog": "MSSQL_MemoryOverview",
+			"frequencySecs": 600,
+			"includeInCustomerAnalytics": true,
+			"actions": [
+				{
+					"type": "ExecuteSql",
+					"parameters": {
+						"sql": "select top 10 c.[type],c.[name], sum(c.pages_kb) + sum(c.awe_allocated_kb) as allocated_kb, sum(c.virtual_memory_reserved_kb) as virtual_reserved_kb, sum(c.virtual_memory_committed_kb) as virtual_commmitted_kb, sum(c.awe_allocated_kb) as awe_kb, sum(c.shared_memory_reserved_kb) as shared_reserved_kb, sum(c.shared_memory_committed_kb) as shared_committed_kb, sum(isnull(p.removed_in_all_rounds_count,0)) as removed_in_rounds from sys.dm_os_memory_clerks c left outer join sys.dm_os_memory_pools p on c.memory_clerk_address = p.memory_pool_address group by c.[type],c.[name] having sum(c.pages_kb) + sum(c.awe_allocated_kb) > 0 order by allocated_kb desc"
+					}
+				}
+			]
+		},
+		{
+			"name": "Top10Statements",
+			"description": "Top 10 expensive statements",
+			"customLog": "MSSQL_Top10Statements",
+			"frequencySecs": 300,
+			"includeInCustomerAnalytics": true,
+			"actions": [
+				{
+					"type": "ExecuteSql",
+					"parameters": {
+						"sql": "select top 10 replace(replace(replace(replace(replace(replace((select SUBSTRING(text,statement_start_offset/2 + 1,iif(statement_end_offset = -1,150,abs((statement_end_offset - statement_start_offset) / 2)) ) from sys.dm_exec_sql_text(sql_handle)),CHAR(9),N' '), CHAR(10),N' '), CHAR(13),N' '),  N'    ' ,N' ' ), N'   ' ,N' ' ),  N'  ',N' ') as sqltext,creation_time,last_execution_time,execution_count as exec_count, total_logical_reads as total_logical_reads, avg_logical_reads = total_logical_reads/execution_count, max_logical_reads,min_logical_reads,last_logical_reads, total_elapsed_time as total_elapsed_time, avg_elapsed_time = total_elapsed_time/execution_count, max_elapsed_time,min_elapsed_time,last_elapsed_time, total_worker_time as total_cpu_time, avg_cpu_time = total_worker_time/execution_count, max_worker_time as max_cpu_time,min_worker_time as min_cpu_time,last_worker_time as last_cpu_time, total_physical_reads as total_phys_reads, avg_phys_reads = total_physical_reads/execution_count, max_physical_reads as max_phys_reads, min_physical_reads as min_phys_reads, last_physical_reads as last_phys_reads, total_logical_writes as total_log_writes, avg_log_writes = total_logical_writes/execution_count, max_logical_writes as max_log_writes,min_logical_writes as min_log_writes, last_logical_writes as last_log_writes, total_clr_time as total_clr_time, avg_clr_time = total_clr_time/execution_count, max_clr_time,min_clr_time,last_clr_time, total_rows, total_rows/execution_count as avg_rows,last_rows, max_rows, min_rows, case total_worker_time when 0 then 0 else  total_elapsed_time/total_worker_time end as wait_factor, plan_generation_num,convert(nvarchar(130),plan_handle,1) as plan_handle, convert(nvarchar(130),sql_handle,1) as sqlhandle from sys.dm_exec_query_stats where execution_count > 0 order by total_elapsed_time desc, exec_count desc"
+					}
+				}
+			]
+		},
+		{
+			"name": "IOPerformance",
+			"description": "Average IO Performance",
+			"customLog": "MSSQL_IOPerformance",
+			"frequencySecs": 60,
+			"includeInCustomerAnalytics": true,
+			"actions": [
+				{
+					"type": "ExecuteSql",
+					"parameters": {
+						"sql": "SELECT mf.physical_name as Filename, CASE WHEN num_of_reads = 0 THEN 0 ELSE ((io_stall_read_ms)/ num_of_reads) END AS [ReadLatency (ms)], CASE WHEN num_of_writes = 0 THEN 0 ELSE (io_stall_write_ms / num_of_writes) END AS [WriteLatency (ms)] , CASE WHEN (num_of_reads = 0 AND num_of_writes = 0) THEN 0 ELSE (io_stall / (num_of_reads + num_of_writes)) END AS [TotalLatency (ms)],CASE WHEN num_of_reads = 0 THEN 0 ELSE (num_of_bytes_read / num_of_reads) END AS [Avg. Bytes/Read], CASE WHEN io_stall_write_ms = 0 THEN 0 ELSE (num_of_bytes_written / num_of_writes) END AS [Avg. Bytes/write], CASE WHEN (num_of_reads = 0 AND num_of_writes = 0) THEN 0 ELSE ((num_of_bytes_read + num_of_bytes_written) / (num_of_reads + num_of_writes)) END AS [Avg. Bytes/access], num_of_reads AS [# Reads],num_of_writes AS [# Writes],io_stall_read_ms AS [IO stall reading (ms)],io_stall_write_ms AS [IO stall writing (ms)] FROM sys.dm_io_virtual_file_stats (db_id(),NULL) AS vfs JOIN sys.master_files AS mf ON vfs.database_id = mf.database_id AND vfs.file_id = mf.file_id WHERE vfs.database_id = db_id()"
+					}
+				}
+			]
+		},
+		{
+			"name": "TableSizes",
+			"description": "TOP 100 Table Size",
+			"customLog": "MSSQL_TableSizes",
+			"frequencySecs": 3600,
+			"includeInCustomerAnalytics": true,
+			"actions": [
+				{
+					"type": "ExecuteSql",
+					"parameters": {
+						"sql": "SELECT TOP 100 OBJECT_NAME(p.object_id) as [Table], SUM (p.reserved_page_count) as [Reserved (Pages)], convert(numeric(8,2),(SUM (p.reserved_page_count) * 8.00) / 1024 /1024) as [Reserved (GB)], SUM (p.used_page_count) as [Used (Pages)], convert(numeric(8,2),(SUM (p.used_page_count) * 8.00) / 1024 /1024) as [Used (GB)], SUM ( CASE WHEN (p.index_id < 2) THEN (p.in_row_data_page_count + p.lob_used_page_count + p.row_overflow_used_page_count) ELSE p.lob_used_page_count + p.row_overflow_used_page_count END ) as [Data Pages], SUM (p.lob_used_page_count) as [BLOB Size (Pages)], convert(numeric(8,2),(SUM (p.lob_used_page_count) * 8.00) / 1024 /1024) as [BLOB Size (GB)], SUM ( CASE WHEN (p.index_id < 2) THEN row_count ELSE 0 END ) as [Row Count] FROM sys.dm_db_partition_stats as p group by object_id order by SUM (p.reserved_page_count) desc "
+					}
+				}
+			]
+		},
+		{
+			"name": "BatchRequests",
+			"description": "Batch Requests/sec and Compilations/sec",
+			"customLog": "MSSQL_BatchRequests",
+			"frequencySecs": 60,
+			"includeInCustomerAnalytics": true,
+			"actions": [
+				{
+					"type": "ExecuteSql",
+					"parameters": {
+						"sql": "DECLARE @Batches bigint, @Comp bigint, @ReComp bigint; SELECT @Batches = cntr_value FROM sys.dm_os_performance_counters WHERE counter_name = N'Batch Requests/sec';SELECT @Comp = cntr_value FROM sys.dm_os_performance_counters WHERE counter_name = N'SQL Compilations/sec';SELECT @ReComp = cntr_value FROM sys.dm_os_performance_counters WHERE counter_name = N'SQL Re-Compilations/sec';WAITFOR DELAY '00:00:01';SELECT counter_name, cntr_value - @Batches as cntr_value FROM sys.dm_os_performance_counters WHERE counter_name = N'Batch Requests/sec' UNION SELECT counter_name, cntr_value - @Comp FROM sys.dm_os_performance_counters WHERE counter_name = N'SQL Compilations/sec' UNION SELECT counter_name, cntr_value - @ReComp FROM sys.dm_os_performance_counters WHERE counter_name = N'SQL Re-Compilations/sec'"
+					}
+				}
+			]
+		},
+		{
+			"name": "WaitPercs",
+			"description": "Wait Statistics",
+			"customLog": "MSSQL_WaitPercs",
+			"frequencySecs": 600,
+			"includeInCustomerAnalytics": true,
+			"actions": [
+				{
+					"type": "ExecuteSql",
+					"parameters": {
+						"sql": ";WITH Waits AS (SELECT wait_type, 100.0 * wait_time_ms / SUM (wait_time_ms) OVER() AS Percentage, ROW_NUMBER() OVER(ORDER BY wait_time_ms DESC) AS RowNum FROM sys.dm_os_wait_stats WHERE wait_type NOT IN ( 'CLR_SEMAPHORE', 'LAZYWRITER_SLEEP', 'RESOURCE_QUEUE', 'SLEEP_TASK', 'SLEEP_SYSTEMTASK', 'SQLTRACE_BUFFER_FLUSH', 'WAITFOR', 'LOGMGR_QUEUE', 'CHECKPOINT_QUEUE', 'REQUEST_FOR_DEADLOCK_SEARCH', 'XE_TIMER_EVENT', 'BROKER_TO_FLUSH','SP_SERVER_DIAGNOSTICS_SLEEP', 'BROKER_TASK_STOP', 'CLR_MANUAL_EVENT', 'CLR_AUTO_EVENT', 'DISPATCHER_QUEUE_SEMAPHORE','HADR_FILESTREAM_IOMGR_IOCOMPLETION', 'FT_IFTS_SCHEDULER_IDLE_WAIT', 'XE_DISPATCHER_WAIT', 'XE_DISPATCHER_JOIN', 'BROKER_EVENTHANDLER', 'TRACEWRITE', 'FT_IFTSHC_MUTEX', 'SQLTRACE_INCREMENTAL_FLUSH_SLEEP', 'BROKER_RECEIVE_WAITFOR', 'ONDEMAND_TASK_QUEUE', 'DBMIRROR_EVENTS_QUEUE','DIRTY_PAGE_POLL', 'DBMIRRORING_CMD', 'BROKER_TRANSMITTER', 'SQLTRACE_WAIT_ENTRIES', 'SLEEP_BPOOL_FLUSH', 'SQLTRACE_LOCK') and wait_type not like 'PREEMPTIVE%' and wait_type not like 'FT%' ) SELECT top 12 W1.wait_type AS WaitType, CAST (W1.Percentage AS DECIMAL(19, 2)) AS Percentage FROM Waits AS W1 INNER JOIN Waits AS W2 ON W2.RowNum <= W1.RowNum GROUP BY W1.RowNum, W1.wait_type, W1.Percentage"
+					}
+				}
+			]
+		},
+		{
+			"name": "BlockingProcesses",
+			"description": "SQL Server blocking processes",
+			"customLog": "MSSQL_BlockingProcesses",
+			"frequencySecs": 60,
+			"includeInCustomerAnalytics": true,
+			"actions": [
+				{
+					"type": "ExecuteSql",
+					"parameters": {
+						"sql": "select 'blocked' as type,spid,kpid,blocked,cmd,waittime,lastwaittype,waitresource,dbid,uid,cpu,physical_io,memusage,login_time,last_batch,ecid,open_tran,status,hostname,program_name,hostprocess,sql_handle from sys.sysprocesses where (blocked != 0 and blocked != spid) union all select 'BLOCKER',spid,kpid,blocked,cmd,waittime,lastwaittype,waitresource,dbid,uid,cpu,physical_io,memusage,login_time,last_batch,ecid,open_tran,status, hostname,program_name,hostprocess,sql_handle from sys.sysprocesses  where (spid in (select distinct blocked from sys.sysprocesses where blocked != 0 and blocked != spid) and blocked != spid)"
+					}
+				}
+			]
+		},
+		{
+			"name": "PageLifeExpectancy",
+			"description": "Page Life Expectancy",
+			"customLog": "MSSQL_PageLifeExpectancy2",
+			"frequencySecs": 60,
+			"includeInCustomerAnalytics": true,
+			"actions": [
+				{
+					"type": "ExecuteSql",
+					"parameters": {
+						"sql": "DECLARE @base BigInt,@Batches bigint;SELECT @Batches = cntr_value FROM sys.dm_os_performance_counters WHERE counter_name = N'Batch Requests/sec';WAITFOR DELAY '00:00:01';SELECT CASE a.counter_name WHEN N'Page life expectancy' THEN N'Page life expectancy (Node ' + rtrim(a.instance_name) + N')' ELSE a.counter_name END AS counter_name,CASE a.counter_name WHEN N'Buffer cache hit ratio' THEN (a.cntr_value * 1.0 / b.cntr_value) * 100.0 WHEN N'Batch Requests/sec' THEN a.cntr_value - @Batches ELSE a.cntr_value END AS cntr_value FROM sys.dm_os_performance_counters a JOIN (SELECT cntr_value,OBJECT_NAME FROM sys.dm_os_performance_counters WHERE (counter_name = N'Buffer cache hit ratio') OR (object_name LIKE N'%Buffer Node%' AND counter_name = N'Page life expectancy') OR (counter_name = N'Batch Requests/sec')) as b ON a.OBJECT_NAME = b.OBJECT_NAME WHERE (a.counter_name = N'Buffer cache hit ratio') OR (a.object_name LIKE N'%Buffer Node%' AND a.counter_name = N'Page life expectancy') OR (a.counter_name = N'Batch Requests/sec');"
+					}
+				}
+			]
+		},
+		{
+			"name": "Errorlog",
+			"description": "The Errorlog",
+			"customLog": "MSSQL_Errorlog",
+			"frequencySecs": 600,
+			"includeInCustomerAnalytics": true,
+			"actions": [
+				{
+					"type": "ExecuteSql",
+					"parameters": {
+						"sql": "exec xp_readerrorlog 0,1,N'Error:'"
+					}
+				},
+				{
+					"type": "ExecuteSql",
+					"parameters": {
+						"sql": "exec xp_readerrorlog 0,1,N'cachestore flush'"
+					}
+				},
+				{
+					"type": "ExecuteSql",
+					"parameters": {
+						"sql": "exec xp_readerrorlog 0,1,N'A significant part of sql server'"
+					}
+				}
+			]
+		},
+		{
+			"name": "CPUUsage",
+			"description": "CPU Usage",
+			"customLog": "MSSQL_CPUUsage",
+			"frequencySecs": 60,
+			"includeInCustomerAnalytics": true,
+			"actions": [
+				{
+					"type": "ExecuteSql",
+					"parameters": {
+						"sql": "SELECT TOP (1) [CPU_SQL],[CPU_Idle],100 - [CPU_SQL] - [CPU_Idle] as [CPU_Others] FROM ( SELECT record.value(N'(./Record/@id)[1]', 'int') AS record_id,record.value(N'(./Record/SchedulerMonitorEvent/SystemHealth/ProcessUtilization)[1]', N'int') AS [CPU_SQL] ,record.value(N'(./Record/SchedulerMonitorEvent/SystemHealth/SystemIdle)[1]', N'int') AS [CPU_Idle] FROM ( SELECT [timestamp], CONVERT(XML, record) AS [record] FROM sys.dm_os_ring_buffers WITH ( NOLOCK ) WHERE ring_buffer_type = N'RING_BUFFER_SCHEDULER_MONITOR' AND record LIKE N'%<SystemHealth>%') AS x) AS y ORDER BY record_id DESC"
+					}
+				}
+			]
+		}
+	]
 }
-
