@@ -252,7 +252,7 @@ class ProviderCheck(ABC):
          backoff = action.get("backoffMulitplier", self.providerInstance.retrySettings["backoffMulitplier"])
 
          try :
-            retry_call(method, fargs=parameters, tries=tries, delay=delay, backoff=backoff, logger=self.tracer)
+            retry_call(method, fkwargs=parameters, tries=tries, delay=delay, backoff=backoff, logger=self.tracer)
          except Exception as e:
             self.tracer.error("[%s] error executing action %s, Exception %s, skipping remaining actions" % (self.fullName,
                                                                                                             e,
