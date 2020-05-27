@@ -19,6 +19,13 @@ from prometheus_client.samples import Sample
 from prometheus_client.parser import text_string_to_metric_families
 ###############################################################################
 
+# Default retry settings
+RETRY_RETRIES = 3
+RETRY_DELAY_SECS   = 1
+RETRY_BACKOFF_MULTIPLIER = 2
+
+###############################################################################
+
 class prometheusProviderInstance(ProviderInstance):
     metricsUrl = None
     HTTP_TIMEOUT = (2, 5) # timeouts: 2s connect, 5s read
@@ -28,8 +35,16 @@ class prometheusProviderInstance(ProviderInstance):
                providerInstance: Dict[str, str],
                skipContent: bool = False,
                **kwargs):
+
+        retrySettings = {
+            "retries": RETRY_RETRIES,
+            "delayInSeconds": RETRY_DELAY_SECS,
+            "backoffMulitplier": RETRY_BACKOFF_MULTIPLIER
+        }
+
         super().__init__(tracer,
                          providerInstance,
+                         retrySettings,
                          skipContent,
                          **kwargs)
 

@@ -25,6 +25,11 @@ COL_LOCAL_UTC               = "_LOCAL_UTC"
 COL_SERVER_UTC              = "_SERVER_UTC"
 COL_TIMESERIES_UTC          = "_TIMESERIES_UTC"
 
+# Default retry settings
+RETRY_RETRIES = 3
+RETRY_DELAY_SECS   = 1
+RETRY_BACKOFF_MULTIPLIER = 2
+
 ###############################################################################
 
 class saphanaProviderInstance(ProviderInstance):
@@ -38,8 +43,16 @@ class saphanaProviderInstance(ProviderInstance):
                 providerInstance: Dict[str, str],
                 skipContent: bool = False,
                 **kwargs):
+
+      retrySettings = {
+         "retries": RETRY_RETRIES,
+         "delayInSeconds": RETRY_DELAY_SECS,
+         "backoffMulitplier": RETRY_BACKOFF_MULTIPLIER
+      }
+
       super().__init__(tracer,
                        providerInstance,
+                       retrySettings,
                        skipContent,
                        **kwargs)
 
