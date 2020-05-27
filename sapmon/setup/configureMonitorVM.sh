@@ -55,4 +55,5 @@ ExecuteCommand "pip3 install prometheus_client"
 ExecuteCommand "pip3 install pyodbc"
 # Install MS SQL Server driver
 ExecuteCommand "ACCEPT_EULA=Y apt-get install -y msodbcsql17"
-
+# Install retry
+ExecuteCommand "pip3 install retry"
