@@ -11,7 +11,8 @@
                             {
                                 "type": "FetchMetrics",
                                 "parameters": {
-                                    "includePrefixes": "^ha_cluster_"
+                                    "includePrefixes": "^ha_cluster_",
+                                    "suppressIfZeroPrefixes": "ha_cluster_(?:pacemaker_nodes|pacemaker_resources)"
                                 }
                             }
                         ]
