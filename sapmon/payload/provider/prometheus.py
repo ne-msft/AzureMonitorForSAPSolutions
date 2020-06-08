@@ -127,6 +127,7 @@ class prometheusProviderCheck(ProviderCheck):
                 "value" : sample.value,
                 self.colTimeGenerated: TimeGenerated,
                 "instance": self.providerInstance.instance,
+                "metadata": self.providerInstance.metadata,
                 "correlation_id": correlation_id
             }
             return sample_dict
@@ -181,8 +182,7 @@ class prometheusProviderCheck(ProviderCheck):
                    {
                        "CONTENT_VERSION": self.providerInstance.contentVersion,
                        "SAPMON_VERSION": PAYLOAD_VERSION,
-                       "PROVIDER_INSTANCE": self.providerInstance.name,
-                       "METADATA": self.providerInstance.metadata
+                       "PROVIDER_INSTANCE": self.providerInstance.name
                    }, 1)))
         # Convert temporary dictionary into JSON string
         try:
