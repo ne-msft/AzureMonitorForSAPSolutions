@@ -39,7 +39,7 @@ class prometheusProviderInstance(ProviderInstance):
         retrySettings = {
             "retries": RETRY_RETRIES,
             "delayInSeconds": RETRY_DELAY_SECS,
-            "backoffMulitplier": RETRY_BACKOFF_MULTIPLIER
+            "backoffMultiplier": RETRY_BACKOFF_MULTIPLIER
         }
 
         super().__init__(tracer,
