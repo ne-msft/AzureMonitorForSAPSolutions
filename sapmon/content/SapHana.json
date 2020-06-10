@@ -1,20 +1,20 @@
-{  
+{
     "contentVersion": "0.4.0",
-    "checks": [  
-        {  
+    "checks": [
+        {
             "name": "HostConfig",
             "description": "SAP HANA Host Config",
             "customLog": "SapHana_HostConfig",
             "frequencySecs": 60,
             "includeInCustomerAnalytics": true,
-            "actions": [  
-                {  
+            "actions": [
+                {
                     "type": "ExecuteSql",
-                    "parameters": {  
+                    "parameters": {
                         "sql": "SELECT * FROM SYS.M_LANDSCAPE_HOST_CONFIGURATION ORDER BY HOST_ACTIVE DESC, INDEXSERVER_ACTUAL_ROLE ASC"
                     }
                 },
-                {  
+                {
                     "type": "ParseHostConfig"
                 }
             ]
@@ -34,16 +34,16 @@
                 }
             ]
         },
-        {  
+        {
             "name": "LoadHistory",
             "description": "SAP HANA Load History",
             "customLog": "SapHana_LoadHistory",
             "frequencySecs": 60,
             "includeInCustomerAnalytics": true,
-            "actions": [  
-                {  
+            "actions": [
+                {
                     "type": "ExecuteSql",
-                    "parameters": {  
+                    "parameters": {
                         "isTimeSeries": true,
                         "initialTimespanSecs": 3600,
                         "sql": "SELECT TIME AS _SERVER_LOCALTIME, LOCALTOUTC(TIME) AS _TIMESERIES_UTC, HOST AS HOST, MAP(CPU, null, -1 , -1, -1, ROUND(100 * CPU / 1) / 100) AS CPU, MAP(MEMORY_RESIDENT, null, -1 , -1, -1, ROUND(100 * MEMORY_RESIDENT / 1048576) / 100) AS MEMORY_RESIDENT, MAP(MEMORY_TOTAL_RESIDENT, null, -1 , -1, -1,  ROUND(100 * MEMORY_TOTAL_RESIDENT / 1048576) / 100) AS MEMORY_TOTAL_RESIDENT, MAP(MEMORY_SIZE, null, -1 , -1, -1, ROUND(100 * MEMORY_SIZE / 1048576) / 100) AS MEMORY_SIZE, MAP(MEMORY_USED, null, -1 , -1, -1, ROUND(100 * MEMORY_USED / 1048576) / 100) AS MEMORY_USED, MAP(MEMORY_ALLOCATION_LIMIT, null, -1 , -1, -1, ROUND(100 * MEMORY_ALLOCATION_LIMIT / 1048576) / 100) AS MEMORY_ALLOCATION_LIMIT, MAP(DISK_USED, null, -1 , -1, -1, ROUND(100 * DISK_USED / 1073741824) / 100) AS DISK_USED, MAP(DISK_SIZE, null, -1 , -1, -1, ROUND(100 * DISK_SIZE / 1073741824) / 100) AS DISK_SIZE, MAP(LAG(TIME) OVER (ORDER BY HOST, TIME) , null , -1,  MAP(SUBSTRING(CAST (NETWORK_IN as VARCHAR),0,1) ,'-', -1, 'n', -1,  ROUND( 10000000*( 100 * NETWORK_IN / (NANO100_BETWEEN(LAG(TIME) OVER (ORDER BY HOST, TIME), TIME) )) / 1048576) / 100)) AS NETWORK_IN, MAP(LAG(TIME) OVER (ORDER BY HOST, TIME) , null , -1, MAP(SUBSTRING(CAST (NETWORK_OUT as VARCHAR),0,1) ,'-', -1, 'n', -1,  ROUND( 10000000*( 100 * NETWORK_OUT / (NANO100_BETWEEN(LAG(TIME) OVER (ORDER BY HOST, TIME), TIME) )) / 1048576) / 100)) AS NETWORK_OUT FROM SYS.M_LOAD_HISTORY_HOST WHERE LOCALTOUTC(TIME) > {lastRunServerUtc} ORDER BY TIME ASC"
@@ -66,16 +66,16 @@
                 }
             ]
         },
-        {  
+        {
             "name": "SystemAvailability",
             "description": "SAP HANA System Availability",
             "customLog": "SapHana_SystemAvailability",
             "frequencySecs": 60,
             "includeInCustomerAnalytics": true,
-            "actions": [  
-                {  
+            "actions": [
+                {
                     "type": "ExecuteSql",
-                    "parameters": {  
+                    "parameters": {
                         "isTimeSeries": true,
                         "initialTimespanSecs": 31536000,
                         "sql": "SELECT h.EVENT_TIME AS _SERVER_LOCALTIME, i.VALUE AS _SERVER_UTC_OFFSET, ADD_SECONDS(h.EVENT_TIME, i.VALUE*(-1)) AS _TIMESERIES_UTC, h.* FROM SYS.M_SYSTEM_AVAILABILITY h, SYS.M_HOST_INFORMATION i WHERE h.HOST = i.HOST AND h.EVENT_NAME <> 'PING' AND UPPER(i.KEY) = 'TIMEZONE_OFFSET' AND ADD_SECONDS(h.EVENT_TIME, i.VALUE*(-1)) > {lastRunServerUtc} ORDER BY h.EVENT_TIME ASC"
@@ -83,17 +83,34 @@
                 }
             ]
         },
-        {  
+        {
             "name": "SqlProbe",
             "description": "Probe for SAP HANA SQL connection",
             "customLog": "SapHana_SqlProbe",
             "frequencySecs": 60,
             "includeInCustomerAnalytics": true,
-            "actions": [  
-                {  
+            "actions": [
+                {
                     "type": "ProbeSqlConnection",
                     "parameters": {
                         "probeTimeout": 3000
+                    }
+                }
+            ]
+        },
+        {
+            "name": "BackupCatalog",
+            "description": "SAP HANA Backup Catalog",
+            "customLog": "SapHana_BackupCatalog",
+            "frequencySecs": 300,
+            "includeInCustomerAnalytics": true,
+            "actions": [
+                {
+                    "type": "ExecuteSql",
+                    "parameters": {
+                        "isTimeSeries": true,
+                        "initialTimespanSecs": 31536000,
+                        "sql": "SELECT MHI.VALUE AS SYSTEM_ID ,MBC.DATABASE_NAME ,MHI.HOST as HOST ,i.VALUE AS _SERVER_UTC_OFFSET ,MBC.ENTRY_TYPE_NAME ,MBC.BACKUP_ID ,MIN(MBC.UTC_START_TIME) AS UTC_START_TIME ,MAX(MBC.UTC_END_TIME) AS UTC_END_TIME ,(NANO100_BETWEEN(MIN(MBC.UTC_START_TIME), MAX(MBC.UTC_END_TIME)) / 10000000) AS TIME_ELAPSED_SECONDS ,CASE WHEN MBC.STATE_NAME LIKE 'successful' THEN 'success' WHEN MBC.STATE_NAME LIKE 'failed' THEN 'fail' ELSE MBC.STATE_NAME END AS STATE_NAME ,MBC.COMMENT ,MBC.MESSAGE ,SUM(MBCF.BACKUP_SIZE) AS BACKUP_SIZE_BYTES ,(SUM(MBCF.BACKUP_SIZE) / 1024 / (NANO100_BETWEEN(MIN(MBC.UTC_START_TIME), MAX(MBC.UTC_END_TIME)) / 10000000)) AS BACKUP_RATE_KBYTES_PER_SECOND ,COUNT(*) AS NUMBER_OF_FILES ,MBCF.DESTINATION_TYPE_NAME ,CURRENT_UTCTIMESTAMP AS _SERVER_UTC ,CURRENT_UTCTIMESTAMP AS _TIMESERIES_UTC FROM SYS_DATABASES.M_BACKUP_CATALOG AS MBC INNER JOIN SYS_DATABASES.M_BACKUP_CATALOG_FILES AS MBCF ON MBC.ENTRY_ID = MBCF.ENTRY_ID JOIN SYS.M_HOST_INFORMATION AS MHI ON UPPER(MHI.KEY) = 'SID' JOIN SYS.M_HOST_INFORMATION AS i ON UPPER(i.KEY) = 'TIMEZONE_OFFSET' AND i.HOST = MHI.HOST WHERE ADD_SECONDS(MBC.UTC_END_TIME, i.VALUE) > {lastRunServerUtc} AND MBC.STATE_NAME NOT LIKE 'running' GROUP BY MHI.VALUE ,MHI.HOST ,i.VALUE ,MBC.DATABASE_NAME ,MBC.ENTRY_TYPE_NAME ,MBC.BACKUP_ID ,MBC.STATE_NAME ,MBC.COMMENT ,MBC.MESSAGE ,MBCF.DESTINATION_TYPE_NAME ,MBC.UTC_END_TIME ORDER BY MBC.BACKUP_ID ASC"
                     }
                 }
             ]
