@@ -51,6 +51,21 @@
                 }
             ]
         },
+        {
+            "name": "Disks",
+            "description": "SAP HANA Disks",
+            "customLog": "SapHana_Disks",
+            "frequencySecs": 60,
+            "includeInCustomerAnalytics": true,
+            "actions": [
+                {
+                    "type": "ExecuteSql",
+                    "parameters": {
+                        "sql": "SELECT HOST, PATH, SUBPATH, USAGE_TYPE, USED_SIZE, TOTAL_SIZE, TOTAL_DEVICE_SIZE FROM SYS.M_DISKS"
+                    }
+                }
+            ]
+        },
         {  
             "name": "SystemAvailability",
             "description": "SAP HANA System Availability",
