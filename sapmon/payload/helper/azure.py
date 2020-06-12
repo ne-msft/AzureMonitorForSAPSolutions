@@ -12,7 +12,7 @@ import json
 import logging
 import requests
 import sys
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, Optional, Tuple
 
 # Payload modules
 from const import *
@@ -25,6 +25,7 @@ class AzureInstanceMetadataService:
    uri = "http://169.254.169.254/metadata"
    params = {"api-version": "2018-02-01"}
    headers = {"Metadata": "true"}
+   resource = "https://management.azure.com/"
 
    # Send a request to the IMDS endpoint
    @staticmethod
@@ -59,20 +60,21 @@ class AzureInstanceMetadataService:
    # Get an authentication token via IMDS
    @staticmethod
    def getAuthToken(tracer: logging.Logger,
-                    resource: str,
-                    msiClientId: Optional[str] = None) -> str:
+                    resource: Optional[str] = None,
+                    msiClientId: Optional[str] = None) -> Tuple[str, str]:
       tracer.info("getting auth token for resource=%s%s" % (resource, ", msiClientId=%s" % msiClientId if msiClientId else ""))
       authToken = None
+      if not resource:
+         resource = AzureInstanceMetadataService.resource
       try:
-         authToken = AzureInstanceMetadataService._sendRequest(
-            tracer,
-            "identity/oauth2/token",
-            params = {"resource": resource, "client_id": msiClientId}
-            )["access_token"]
+         result = AzureInstanceMetadataService._sendRequest(tracer,
+                                                            "identity/oauth2/token",
+                                                            params = {"resource": resource, "client_id": msiClientId})
+         authToken, msiClientId = result["access_token"], result["client_id"]
       except Exception as e:
          tracer.critical("could not get auth token (%s)" % e)
          sys.exit(ERROR_GETTING_AUTH_TOKEN)
-      return authToken
+      return authToken, msiClientId
 
 ###############################################################################
 
@@ -239,7 +241,7 @@ class AzureStorageQueue():
     def __init__(self,
                  tracer: logging.Logger,
                  sapmonId: str,
-                 msiClientID: str,
+                 authToken: str,
                  subscriptionId: str,
                  resourceGroup: str,
                  queueName: str):
@@ -247,10 +249,8 @@ class AzureStorageQueue():
         self.tracer.info("initializing Storage Queue instance")
         self.accountName = STORAGE_ACCOUNT_NAMING_CONVENTION % sapmonId
         self.name = queueName
-        tokenResponse = AzureInstanceMetadataService.getAuthToken(self.tracer,
-                                                                  resource = "https://management.azure.com/",
-                                                                  msiClientId = msiClientID)
-        self.token["access_token"] = tokenResponse
+        
+        self.token["access_token"] = authToken
         self.subscriptionId = subscriptionId
         self.resourceGroup = resourceGroup
 

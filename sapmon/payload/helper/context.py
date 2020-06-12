@@ -9,6 +9,7 @@
 
 # Python modules
 import re
+import sys
 
 # Payload modules
 from helper.tracing import *
@@ -34,13 +35,20 @@ class Context(object):
       # Retrieve sapmonId via IMDS
       self.vmInstance = AzureInstanceMetadataService.getComputeInstance(self.tracer,
                                                                         operation)
-      self.vmTags = dict(
-         map(lambda s : s.split(':'),
-         self.vmInstance["tags"].split(";"))
-      )
-      self.tracer.debug("vmTags=%s" % self.vmTags)
-      self.sapmonId = self.vmTags["SapMonId"]
-      self.tracer.debug("sapmonId=%s " % self.sapmonId)
+      vmName = self.vmInstance.get("name", None)
+      if not vmName:
+         self.tracer.critical("could not obtain VM name from IMDS")
+         sys.exit(ERROR_GETTING_SAPMONID)
+      try:
+         self.sapmonId = re.search("sapmon-vm-(.*)", vmName).group(1)
+      except AttributeError:
+         self.tracer.critical("could not extract sapmonId from VM name")
+         sys.exit(ERROR_GETTING_SAPMONID)
+
+      self.authToken, self.msiClientId = AzureInstanceMetadataService.getAuthToken(self.tracer)
+
+      self.tracer.debug("sapmonId=%s" % self.sapmonId)
+      self.tracer.debug("msiClientId=%s" % self.msiClientId)
 
       # Add storage queue log handler to tracer
       tracing.addQueueLogHandler(self.tracer, self)
@@ -51,8 +59,7 @@ class Context(object):
       # Get KeyVault
       self.azKv = AzureKeyVault(self.tracer,
                                 KEYVAULT_NAMING_CONVENTION % self.sapmonId,
-                                self.vmTags.get("SapMonMsiClientId",
-                                None))
+                                msiClientId = self.msiClientId)
       if not self.azKv.exists():
          sys.exit(ERROR_KEYVAULT_NOT_FOUND)
 
