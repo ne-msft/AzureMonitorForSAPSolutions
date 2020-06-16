@@ -16,6 +16,10 @@ from typing import Dict, List
 
 ###############################################################################
 
+# Default retry settings
+RETRY_RETRIES = 3
+RETRY_DELAY_SECS   = 1
+RETRY_BACKOFF_MULTIPLIER = 2
 
 ###############################################################################
 
@@ -29,8 +33,16 @@ class MSSQLProviderInstance(ProviderInstance):
                 providerInstance: Dict[str, str],
                 skipContent: bool = False,
                 **kwargs):
+
+      retrySettings = {
+         "retries": RETRY_RETRIES,
+         "delayInSeconds": RETRY_DELAY_SECS,
+         "backoffMultiplier": RETRY_BACKOFF_MULTIPLIER
+      }
+
       super().__init__(tracer,
                        providerInstance,
+                       retrySettings,
                        skipContent,
                        **kwargs)
 
@@ -199,7 +211,7 @@ class MSSQLProviderCheck(ProviderCheck):
       return resultJsonString
 
    # Connect to sql and run the check-specific SQL statement
-   def _actionExecuteSql(self, sql: str) -> bool:
+   def _actionExecuteSql(self, sql: str) -> None:
       def handle_sql_variant_as_string(value):
          return value.decode('utf-16le')
       self.tracer.info("[%s] connecting to sql and executing SQL" % self.fullName)
@@ -207,7 +219,7 @@ class MSSQLProviderCheck(ProviderCheck):
       # Find and connect to sql server
       connection = self._getsqlConnection()
       if not connection:
-         return False
+         raise Exception("Unable to get SQL connection")
 
       cursor = connection.cursor()
       connection.add_output_converter(-150, handle_sql_variant_as_string)
@@ -221,8 +233,7 @@ class MSSQLProviderCheck(ProviderCheck):
          resultRows = cursor.fetchall()
 
       except Exception as e:
-         self.tracer.error("[%s] could not execute SQL (%s)" % (self.fullName,e))
-         return False
+         raise Exception("[%s] could not execute SQL (%s)" % (self.fullName,e))
 
       self.lastResult = (colIndex, resultRows)
       self.tracer.debug("[%s] lastResult.colIndex=%s" % (self.fullName,colIndex))
@@ -230,18 +241,16 @@ class MSSQLProviderCheck(ProviderCheck):
 
       # Update internal state
       if not self.updateState():
-         return False
+         raise Exception("Failed to update state")
 
       # Disconnect from sql server to avoid memory leaks
       try:
          self.tracer.debug("[%s] closing sql connection" % self.fullName)
          connection.close()
       except Exception as e:
-         self.tracer.error("[%s] could not close connection to sql instance (%s)" % (self.fullName,e))
-         return False
+         raise Exception("[%s] could not close connection to sql instance (%s)" % (self.fullName,e))
 
       self.tracer.info("[%s] successfully ran SQL for check" % self.fullName)
-      return True
 
 
 # Update the internal state of this check (including last run times)
