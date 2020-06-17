@@ -6,7 +6,6 @@ import re
 import time
 import pyodbc
 
-
 # Payload modules
 from const import *
 from helper.azure import *
@@ -108,10 +107,11 @@ class MSSQLProviderInstance(ProviderInstance):
          self.tracer.error("[%s] could not establish sql connection %s (%s)" % (self.fullName,self.sqlHostname,e))
          return False
 
-      # Try to run a query against the services view
-      # This query will (rightfully) fail if the sql license is expired
+      # Try to run a query 
       try:
-         # execute todo
+         cursor = connection.cursor()
+         connection.add_output_converter(-150, handle_sql_variant_as_string)
+         cursor.execute("SELECT db_name();")
          connection.close()
       except Exception as e:
          self.tracer.error("[%s] could run validation query (%s)" % (self.fullName, e))
@@ -159,7 +159,6 @@ class MSSQLProviderCheck(ProviderCheck):
          return (None)
       return (connection)
 
-
    # Calculate the MD5 hash of a result set
    def _calculateResultHash(self,
                             resultRows: List[List[str]]) -> str:
@@ -184,6 +183,7 @@ class MSSQLProviderCheck(ProviderCheck):
       # Only loop through the result if there is one
       if self.lastResult:
          (colIndex, resultRows) = self.lastResult
+         
          # Iterate through all rows of the last query result
          for r in resultRows:
             logItem = {
@@ -251,7 +251,6 @@ class MSSQLProviderCheck(ProviderCheck):
          raise Exception("[%s] could not close connection to sql instance (%s)" % (self.fullName,e))
 
       self.tracer.info("[%s] successfully ran SQL for check" % self.fullName)
-
 
 # Update the internal state of this check (including last run times)
    def updateState(self) -> bool:

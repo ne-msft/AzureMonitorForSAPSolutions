@@ -207,6 +207,66 @@
 					}
 				}
 			]
+		},
+		{
+			"name": "AOOverview",
+			"description": "AlwaysOn Overview",
+			"customLog": "MSSQL_AOOverview",
+			"frequencySecs": 60,
+			"includeInCustomerAnalytics": true,
+			"actions": [
+				{
+					"type": "ExecuteSql",
+					"parameters": {
+						"sql": "SELECT ag.name AS ag_name,ar.replica_server_name AS replica_server,db_name(dr_state.database_id) as db_name,replica_loc = CASE WHEN ar_state.is_local = 1 THEN N'LOCAL' ELSE N'REMOTE' END,replica_role = CASE WHEN ar_state.role_desc IS NULL THEN N'DISCONNECTED' ELSE ar_state.role_desc END,ar_state.connected_state_desc as conn_state,ar.availability_mode_desc as avail_mode,dr_state.synchronization_state_desc as sync_state,isnull(dr_state.log_send_queue_size,0) as sendqueue_sz,isnull(dr_state.redo_queue_size,0) as redoqueue_sz,isnull(datediff(s,last_hardened_time,getdate()),0) as sec_behind,convert(nvarchar(25),dr_state.last_hardened_lsn) as last_hardnd_lsn,dr_state.last_hardened_time as last_hardnd_tm FROM sys.availability_groups AS ag JOIN sys.availability_replicas AS ar ON ag.group_id = ar.group_id JOIN sys.dm_hadr_availability_replica_states AS ar_state ON ar.replica_id = ar_state.replica_id JOIN sys.dm_hadr_database_replica_states dr_state ON ag.group_id = dr_state.group_id and dr_state.replica_id = ar_state.replica_id;"
+					}
+				}
+			]
+		},
+		{
+			"name": "AOWaiter",
+			"description": "AlwaysOn waiting tasks",
+			"customLog": "MSSQL_AOWaiter",
+			"frequencySecs": 60,
+			"includeInCustomerAnalytics": true,
+			"actions": [
+				{
+					"type": "ExecuteSql",
+					"parameters": {
+						"sql": "select session_id,status,command,blocking_session_id,wait_type,wait_time,last_wait_type from sys.dm_exec_requests where session_id >= 50 and (wait_type = 'HADR_SYNC_COMMIT' or wait_type = 'HADR_DATABASE_FLOW_CONTROL');"
+					}
+				}
+			]
+		},
+		{
+			"name": "AOWaitstats",
+			"description": "AlwaysOn Wait statistics",
+			"customLog": "MSSQL_AOWaitstats",
+			"frequencySecs": 60,
+			"includeInCustomerAnalytics": true,
+			"actions": [
+				{
+					"type": "ExecuteSql",
+					"parameters": {
+						"sql": ";WITH Waits AS (SELECT wait_type, wait_time_ms / 1000.0 AS WaitS, (wait_time_ms - signal_wait_time_ms) / 1000.0 AS ResourceS, signal_wait_time_ms / 1000.0 AS SignalS, waiting_tasks_count AS WaitCount, 100.0 * wait_time_ms / SUM (wait_time_ms) OVER() AS Percentage, ROW_NUMBER() OVER(ORDER BY wait_time_ms DESC) AS RowNum FROM sys.dm_os_wait_stats where wait_type like 'HADR%' and waiting_tasks_count > 0 ) SELECT W1.wait_type AS WaitType, CAST (W1.WaitS AS DECIMAL(19, 2)) AS Wait_S, CAST (W1.ResourceS AS DECIMAL(19, 2)) AS Resource_S, CAST (W1.SignalS AS DECIMAL(19, 2)) AS Signal_S, W1.WaitCount AS WaitCount, CAST (W1.Percentage AS DECIMAL(19, 2)) AS Percentage, CAST ((W1.WaitS / W1.WaitCount) AS DECIMAL (19, 4)) AS AvgWait_S, CAST ((W1.ResourceS / W1.WaitCount) AS DECIMAL (19, 4)) AS AvgRes_S, CAST ((W1.SignalS / W1.WaitCount) AS DECIMAL (19, 4)) AS AvgSig_S FROM Waits AS W1 INNER JOIN Waits AS W2 ON W2.RowNum <= W1.RowNum GROUP BY W1.RowNum, W1.wait_type, W1.WaitS, W1.ResourceS, W1.SignalS, W1.WaitCount, W1.Percentage HAVING SUM (W2.Percentage) - W1.Percentage < 99"
+					}
+				}
+			]
+		},
+		{
+			"name": "AOFailovers",
+			"description": "AlwaysOn Failovers",
+			"customLog": "MSSQL_AOFailovers",
+			"frequencySecs": 60,
+			"includeInCustomerAnalytics": true,
+			"actions": [
+				{
+					"type": "ExecuteSql",
+					"parameters": {
+						"sql": "SET QUOTED_IDENTIFIER ON;declare @tfile sysname;select @tfile = cast((target_data) as XML).value(N'/EventFileTarget[1]/File[1]/@name',N'sysname') from sys.dm_xe_session_targets st inner join sys.dm_xe_sessions sess ON (sess.[address] = st.[event_session_address]) WHERE sess.[name] = N'AlwaysOn_health' and st.target_name = N'event_file';select @tfile = stuff(@tfile,patindex('%AlwaysOn_health%',@tfile),999,N'AlwaysOn_health*');WITH cte_HADR AS (SELECT object_name,CONVERT(XML, event_data) AS data FROM sys.fn_xe_file_target_read_file(@tfile, null, null, null) WHERE object_name = N'error_reported') SELECT data.value('(/event/@timestamp)[1]','datetime') AS [timestamp],@@SERVERNAME as server_name,replace(replace(data.value('(/event/data[@name=''message''])[1]','varchar(max)'),N'The availability group database ',''), N' because the mirroring session or availability group failed over due to role synchronization. This is an informational message only. No user action is required.','') AS [message] FROM cte_HADR WHERE data.value('(/event/data[@name=''error_number''])[1]','int') = 1480 ORDER BY [timestamp] DESC;"
+					}
+				}
+			]
 		}
 	]
 }
