@@ -6,6 +6,7 @@ import json
 import logging
 import requests
 from typing import Callable, Dict, Optional
+from binascii import hexlify
 
 # Payload modules
 from const import *
@@ -63,7 +64,10 @@ class JsonEncoder(json.JSONEncoder):
          return float(o)
       elif isinstance(o, (datetime, date)):
          return datetime.strftime(o, TIME_FORMAT_JSON)
-      return super(_JsonEncoder, self).default(o)
+      elif isinstance(o, bytes):
+         s = hexlify(o).decode("ascii")
+         return "0x%s" % s.upper()
+      return super(_JsonEncoder, self).default(o)      
 
 # Helper class to de-serialize JSON into datetime and Decimal objects
 class JsonDecoder(json.JSONDecoder):
