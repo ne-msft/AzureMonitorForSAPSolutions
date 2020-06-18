@@ -78,7 +78,7 @@
                     "parameters": {
                         "isTimeSeries": true,
                         "initialTimespanSecs": 31536000,
-                        "sql": "SELECT h.EVENT_TIME AS _SERVER_LOCALTIME, i.VALUE AS _SERVER_UTC_OFFSET, ADD_SECONDS(h.EVENT_TIME, i.VALUE*(-1)) AS _TIMESERIES_UTC, h.* FROM SYS.M_SYSTEM_AVAILABILITY h, SYS.M_HOST_INFORMATION i WHERE h.HOST = i.HOST AND h.EVENT_NAME <> 'PING' AND UPPER(i.KEY) = 'TIMEZONE_OFFSET' AND ADD_SECONDS(h.EVENT_TIME, i.VALUE*(-1)) > {lastRunServerUtc} ORDER BY h.EVENT_TIME ASC"
+                        "sql": "SELECT EVENT_TIME AS _SERVER_LOCALTIME, LOCALTOUTC(EVENT_TIME) AS _TIMESERIES_UTC, * FROM M_SYSTEM_AVAILABILITY WHERE EVENT_NAME <> 'PING' AND LOCALTOUTC(EVENT_TIME) > {lastRunServerUtc} ORDER BY EVENT_TIME ASC"
                     }
                 }
             ]
