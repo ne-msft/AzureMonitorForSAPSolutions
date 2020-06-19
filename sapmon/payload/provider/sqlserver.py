@@ -51,7 +51,7 @@ class MSSQLProviderInstance(ProviderInstance):
       if not self.SQLHostname:
          self.tracer.error("[%s] SQLHostname cannot be empty" % self.fullName)
          return False
-      self.SQLUser = self.providerProperties.get("SQLUser", None)
+      self.SQLUser = self.providerProperties.get("SQLUsername", None)
       if not self.SQLUser:
          self.tracer.error("[%s] SQLUser cannot be empty" % self.fullName)
          return False
