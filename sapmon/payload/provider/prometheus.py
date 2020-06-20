@@ -180,7 +180,6 @@ class prometheusProviderCheck(ProviderCheck):
         resultSet.append(prometheusSample2Dict(
             Sample("sapmon",
                    {
-                       "CONTENT_VERSION": self.providerInstance.contentVersion,
                        "SAPMON_VERSION": PAYLOAD_VERSION,
                        "PROVIDER_INSTANCE": self.providerInstance.name
                    }, 1)))

@@ -1,5 +1,4 @@
 {
-    "contentVersion": "0.4.0",
     "checks": [
         {
             "name": "HostConfig",
