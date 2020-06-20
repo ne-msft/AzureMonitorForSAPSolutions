@@ -198,8 +198,15 @@ class saphanaProviderCheck(ProviderCheck):
                                                                                     self.providerInstance.hanaDbSqlPort,
                                                                                     e))
       if not cursor:
-         self.tracer.error("[%s] unable to connect to any HANA node (hosts to try=%s)" % (self.fullName,
-                                                                                          hostsToTry))
+         self.tracer.error("[%s] unable to connect to any HANA node (hosts to try=%s); reverting back to user config" % (self.fullName,
+                                                                                                                         hostsToTry))
+         # Give up and remove current host config; for next execution, user config will be pulled
+         # This makes sense in HA/DR scenarios where customers connected HANA provider against a load balancer vIP
+         self.providerInstance.state.pop("hostConfig")
+         # Update internal state
+         if not self.updateState():
+            raise Exception("Failed to update state")
+
          return (None, None, None)
       return (connection, cursor, host)
 
