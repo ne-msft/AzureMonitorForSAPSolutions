@@ -1,5 +1,5 @@
 {
-        "contentVersion": "0.1.0",
+        "contentType": "Prometheus",
         "checks": [
                 {
                         "name": "PrometheusHAClusterExporter",
