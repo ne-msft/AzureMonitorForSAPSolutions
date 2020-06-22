@@ -47,17 +47,17 @@ class MSSQLProviderInstance(ProviderInstance):
 
    # Parse provider properties and fetch DB password from KeyVault, if necessary
    def parseProperties(self):
-      self.SQLHostname = self.providerProperties.get("SQLHostname", None)
+      self.SQLHostname = self.providerProperties.get("sqlHostname", None)
       if not self.SQLHostname:
-         self.tracer.error("[%s] SQLHostname cannot be empty" % self.fullName)
+         self.tracer.error("[%s] sqlHostname cannot be empty" % self.fullName)
          return False
-      self.SQLUser = self.providerProperties.get("SQLUsername", None)
+      self.SQLUser = self.providerProperties.get("sqlUsername", None)
       if not self.SQLUser:
-         self.tracer.error("[%s] SQLUser cannot be empty" % self.fullName)
+         self.tracer.error("[%s] sqlUsername cannot be empty" % self.fullName)
          return False
-      self.SQLPassword = self.providerProperties.get("SQLPassword", None)
+      self.SQLPassword = self.providerProperties.get("sqlPassword", None)
       if not self.SQLPassword:
-         self.tracer.error("[%s] SQLPassword cannot be empty" % self.fullName)
+         self.tracer.error("[%s] sqlPassword cannot be empty" % self.fullName)
          return False
       return True
 

@@ -197,11 +197,35 @@ class saphanaProviderCheck(ProviderCheck):
                                                                                     host,
                                                                                     self.providerInstance.hanaDbSqlPort,
                                                                                     e))
-      if not cursor:
-         self.tracer.error("[%s] unable to connect to any HANA node (hosts to try=%s)" % (self.fullName,
-                                                                                          hostsToTry))
-         return (None, None, None)
-      return (connection, cursor, host)
+      # If we were able to establish a connection, we're done
+      if cursor:
+         return (connection, cursor, host)
+
+      # Our last chance: Forget HANA's current host config and try out the original user config
+      self.tracer.error("[%s] unable to connect to any HANA node (hosts to try=%s)" % (self.fullName,
+                                                                                       hostsToTry))
+      self.tracer.info("[%s] trying with connection from user config" % self.fullName)
+      try:
+         connection = self.providerInstance._establishHanaConnectionToHost(hostname = self.providerInstance.hanaHostname)
+         if connection.isconnected():
+            cursor = connection.cursor()
+            self.tracer.info("[%s] connection %s:%d from user config worked; forgetting host config" % (self.fullName,
+                                                                                                        self.providerInstance.hanaHostname,
+                                                                                                        self.providerInstance.hanaDbSqlPort))
+            # Give up and remove current host config, so a "fresh" host config will be pulled next time
+            # This is for HA/DR scenarios where customers connected against a vIP and a failover just happened
+            self.providerInstance.state.pop("hostConfig")
+            # Update internal state
+            if not self.updateState():
+               raise Exception("Failed to update state")
+            # Return (temporary) connection from user config
+            return (connection, cursor, self.providerInstance.hanaHostname)
+      except Exception as e:
+         self.tracer.error("[%s] %s:%d from user config is also unreachable (%s)" % (self.fullName,
+                                                                                     self.providerInstance.hanaHostname,
+                                                                                     self.providerInstance.hanaDbSqlPort,
+                                                                                     e))
+      return (None, None, None)
 
    # Prepare the SQL statement based on the check-specific query
    def _prepareSql(self,
@@ -385,7 +409,7 @@ class saphanaProviderCheck(ProviderCheck):
 
    # Probe SQL Connection to all nodes in HANA landscape
    def _actionProbeSqlConnection(self,
-                            probeTimeout: int = None) -> None:
+                                 probeTimeout: int = None) -> None:
       self.tracer.info("[%s] probing SQL connection to all HANA nodes" % self.fullName)
 
       # If no probeTimeout parameter is defined for this action, use the default
