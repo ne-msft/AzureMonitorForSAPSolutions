@@ -63,7 +63,7 @@ class MSSQLProviderInstance(ProviderInstance):
 
    # Validate that we can establish a sql connection and run queries
    def validate(self) -> bool:
-      self.tracer.info("connecting to sql instance (%s) to run test query" % self.sqlHostname)
+      self.tracer.info("connecting to sql instance (%s) to run test query" % self.SQLHostname)
 
       # Try to establish a sql connection using the details provided by the user
       try:
@@ -72,7 +72,7 @@ class MSSQLProviderInstance(ProviderInstance):
             self.tracer.error("[%s] unable to validate connection status" % self.fullName)
             return False
       except Exception as e:
-         self.tracer.error("[%s] could not establish sql connection %s (%s)" % (self.fullName,self.sqlHostname,e))
+         self.tracer.error("[%s] could not establish sql connection %s (%s)" % (self.fullName,self.SQLHostname,e))
          return False
 
       # Try to run a query 
