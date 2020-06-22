@@ -134,10 +134,10 @@ class tracing:
       tracer.info("adding storage queue log handler")
       try:
          storageQueue = AzureStorageQueue(tracer,
-                                          sapmonId = ctx.sapmonId,
-                                          msiClientID = ctx.vmTags.get("SapMonMsiClientId", None),
-                                          subscriptionId = ctx.vmInstance["subscriptionId"],
-                                          resourceGroup = ctx.vmInstance["resourceGroupName"],
+                                          ctx.sapmonId,
+                                          ctx.authToken,
+                                          ctx.vmInstance["subscriptionId"],
+                                          ctx.vmInstance["resourceGroupName"],
                                           queueName = STORAGE_QUEUE_NAMING_CONVENTION % ctx.sapmonId)
          storageKey = storageQueue.getAccessKey()
          queueStorageLogHandler = QueueStorageHandler(account_name=storageQueue.accountName,
@@ -164,11 +164,11 @@ class tracing:
        tracer.info("creating customer metrics tracer object")
        try:
            storageQueue = AzureStorageQueue(tracer,
-                                            sapmonId = ctx.sapmonId,
-                                            msiClientID = ctx.vmTags.get("SapMonMsiClientId", None),
-                                            subscriptionId = ctx.vmInstance["subscriptionId"],
-                                            resourceGroup = ctx.vmInstance["resourceGroupName"],
-                                            queueName = CUSTOMER_METRICS_QUEUE_NAMING_CONVENTION % ctx.sapmonId)
+                                            ctx.sapmonId,
+                                            ctx.authToken,
+                                            ctx.vmInstance["subscriptionId"],
+                                            ctx.vmInstance["resourceGroupName"],
+                                            CUSTOMER_METRICS_QUEUE_NAMING_CONVENTION % ctx.sapmonId)
            storageKey = storageQueue.getAccessKey()
            customerMetricsLogHandler = QueueStorageHandler(account_name = storageQueue.accountName,
                                                            account_key = storageKey,
