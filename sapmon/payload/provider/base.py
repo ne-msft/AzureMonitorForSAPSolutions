@@ -255,8 +255,8 @@ class ProviderCheck(ABC):
             retry_call(method, fkwargs=parameters, tries=tries, delay=delay, backoff=backoff, logger=self.tracer)
          except Exception as e:
             self.tracer.error("[%s] error executing action %s, Exception %s, skipping remaining actions" % (self.fullName,
-                                                                                                            e,
-                                                                                                            methodName))
+                                                                                                            methodName,
+                                                                                                            e))
             break
       return self.generateJsonString()
 
