@@ -10,7 +10,7 @@
                 {
                     "type": "ExecuteSql",
                     "parameters": {
-                        "sql": "SELECT * FROM SYS.M_LANDSCAPE_HOST_CONFIGURATION ORDER BY HOST_ACTIVE DESC, INDEXSERVER_ACTUAL_ROLE ASC"
+                        "sql": "SELECT hi.VALUE AS IP, lhc.* FROM SYS.M_LANDSCAPE_HOST_CONFIGURATION lhc LEFT OUTER JOIN SYS.M_HOST_INFORMATION hi ON lhc.HOST=hi.HOST AND hi.KEY='net_publicname' ORDER BY HOST_ACTIVE DESC, INDEXSERVER_ACTUAL_ROLE ASC"
                     }
                 },
                 {
