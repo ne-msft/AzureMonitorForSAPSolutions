@@ -20,7 +20,6 @@ class ProviderInstance(ABC):
    providerType = None
    providerProperties = {}
    metadata = {}
-   contentVersion = None
    checks = []
    state = {}
    retrySettings = {}
@@ -64,12 +63,6 @@ class ProviderInstance(ABC):
          self.tracer.error("[%s] could not read content file %s (%s)" % (self.fullName,
                                                                          filename,
                                                                          e))
-         return False
-
-      self.contentVersion = jsonData.get("contentVersion", None)
-      if not self.contentVersion:
-         self.tracer.error("[%s] contentVersion not specified in content file %s" % (self.fullName,
-                                                                                     filename))
          return False
 
       # Parse and instantiate the individual checks of the provider
@@ -255,8 +248,8 @@ class ProviderCheck(ABC):
             retry_call(method, fkwargs=parameters, tries=tries, delay=delay, backoff=backoff, logger=self.tracer)
          except Exception as e:
             self.tracer.error("[%s] error executing action %s, Exception %s, skipping remaining actions" % (self.fullName,
-                                                                                                            e,
-                                                                                                            methodName))
+                                                                                                            methodName,
+                                                                                                            e))
             break
       return self.generateJsonString()
 

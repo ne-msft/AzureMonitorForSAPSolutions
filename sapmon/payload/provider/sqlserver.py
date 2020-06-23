@@ -47,23 +47,23 @@ class MSSQLProviderInstance(ProviderInstance):
 
    # Parse provider properties and fetch DB password from KeyVault, if necessary
    def parseProperties(self):
-      self.SQLHostname = self.providerProperties.get("SQLHostname", None)
+      self.SQLHostname = self.providerProperties.get("sqlHostname", None)
       if not self.SQLHostname:
-         self.tracer.error("[%s] SQLHostname cannot be empty" % self.fullName)
+         self.tracer.error("[%s] sqlHostname cannot be empty" % self.fullName)
          return False
-      self.SQLUser = self.providerProperties.get("SQLUsername", None)
+      self.SQLUser = self.providerProperties.get("sqlUsername", None)
       if not self.SQLUser:
-         self.tracer.error("[%s] SQLUser cannot be empty" % self.fullName)
+         self.tracer.error("[%s] sqlUsername cannot be empty" % self.fullName)
          return False
-      self.SQLPassword = self.providerProperties.get("SQLPassword", None)
+      self.SQLPassword = self.providerProperties.get("sqlPassword", None)
       if not self.SQLPassword:
-         self.tracer.error("[%s] SQLPassword cannot be empty" % self.fullName)
+         self.tracer.error("[%s] sqlPassword cannot be empty" % self.fullName)
          return False
       return True
 
    # Validate that we can establish a sql connection and run queries
    def validate(self) -> bool:
-      self.tracer.info("connecting to sql instance (%s) to run test query" % self.sqlHostname)
+      self.tracer.info("connecting to sql instance (%s) to run test query" % self.SQLHostname)
 
       # Try to establish a sql connection using the details provided by the user
       try:
@@ -72,7 +72,7 @@ class MSSQLProviderInstance(ProviderInstance):
             self.tracer.error("[%s] unable to validate connection status" % self.fullName)
             return False
       except Exception as e:
-         self.tracer.error("[%s] could not establish sql connection %s (%s)" % (self.fullName,self.sqlHostname,e))
+         self.tracer.error("[%s] could not establish sql connection %s (%s)" % (self.fullName,self.SQLHostname,e))
          return False
 
       # Try to run a query 
@@ -155,7 +155,6 @@ class MSSQLProviderCheck(ProviderCheck):
          # Iterate through all rows of the last query result
          for r in resultRows:
             logItem = {
-               "CONTENT_VERSION": self.providerInstance.contentVersion,
                "SAPMON_VERSION": PAYLOAD_VERSION,
                "PROVIDER_INSTANCE": self.providerInstance.name,
                "METADATA": self.providerInstance.metadata
