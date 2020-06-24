@@ -66,8 +66,6 @@ class MSSQLProviderInstance(ProviderInstance):
 
    # Validate that we can establish a sql connection and run queries
    def validate(self) -> bool:
-#      def handle_sql_variant_as_string(value):
-#         return value.decode('utf-16le')
       self.tracer.info("connecting to sql instance (%s) to run test query" % self.SQLHostname)
 
       # Try to establish a sql connection using the details provided by the user
@@ -80,7 +78,6 @@ class MSSQLProviderInstance(ProviderInstance):
 
       # Try to run a query 
       try:
-#         connection.add_output_converter(-150, handle_sql_variant_as_string)
          cursor.execute("SELECT db_name();")
          connection.close()
       except Exception as e:
