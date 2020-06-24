@@ -103,7 +103,7 @@ class MSSQLProviderInstance(ProviderInstance):
       if SQLPort:
          SQLHostname += ",%d" % SQLPort
 
-      self.tracer.debug("trying to connect DRIVER={ODBC Driver 17 for SQL Server};SERVER=%s;UID=%s;PWD=%s" % (SQLHostname, SQLUsername, SQLPassword))
+      self.tracer.debug("trying to connect DRIVER={ODBC Driver 17 for SQL Server};SERVER=%s;UID=%s" % (SQLHostname, SQLUsername, SQLPassword))
       conn = pyodbc.connect("DRIVER={ODBC Driver 17 for SQL Server};SERVER=%s;UID=%s;PWD=%s" % (SQLHostname, SQLUsername, SQLPassword),
                             timeout=TIMEOUT_SQL_SECS)
       return conn
