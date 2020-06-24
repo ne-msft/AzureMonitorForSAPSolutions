@@ -180,7 +180,7 @@ class saphanaProviderCheck(ProviderCheck):
          # Host config has already been retrieved; rank the hosts to compile a list of hosts to try
          self.tracer.debug("[%s] host config has been persisted to provider, deriving prioritized host list" % self.fullName)
          hostConfig = self.providerInstance.state["hostConfig"]
-         hostsToTry = [h["host"] for h in hostConfig]
+         hostsToTry = [h["ip"] if h.get("ip", None) else h["host"] for h in hostConfig]
 
       # Iterate through the prioritized list of hosts to try
       cursor = None
@@ -300,7 +300,6 @@ class saphanaProviderCheck(ProviderCheck):
          # Iterate through all rows of the last query result
          for r in resultRows:
             logItem = {
-               "CONTENT_VERSION": self.providerInstance.contentVersion,
                "SAPMON_VERSION": PAYLOAD_VERSION,
                "PROVIDER_INSTANCE": self.providerInstance.name,
                "METADATA": self.providerInstance.metadata
@@ -401,6 +400,7 @@ class saphanaProviderCheck(ProviderCheck):
       for r in resultRows:
          host = {
             "host": r["HOST"],
+            "ip": r["IP"],
             "active": True if r["HOST_ACTIVE"] == "YES" else False,
             "role": r["INDEXSERVER_ACTUAL_ROLE"]
             }
