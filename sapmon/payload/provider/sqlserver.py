@@ -49,18 +49,18 @@ class MSSQLProviderInstance(ProviderInstance):
 
    # Parse provider properties and fetch DB password from KeyVault, if necessary
    def parseProperties(self):
-      self.SQLHostname = self.providerProperties.get("SQLHostname", None)
+      self.SQLHostname = self.providerProperties.get("sqlHostname", None)
       if not self.SQLHostname:
-         self.tracer.error("[%s] SQLHostname cannot be empty" % self.fullName)
+         self.tracer.error("[%s] sqlHostname cannot be empty" % self.fullName)
          return False
       self.SQLPort = self.providerProperties.get("SQLPort", None)
       self.SQLUsername = self.providerProperties.get("SQLUsername", None)
       if not self.SQLUsername:
          self.tracer.error("[%s] SQLUsername cannot be empty" % self.fullName)
          return False
-      self.SQLPassword = self.providerProperties.get("SQLPassword", None)
+      self.SQLPassword = self.providerProperties.get("sqlPassword", None)
       if not self.SQLPassword:
-         self.tracer.error("[%s] SQLPassword cannot be empty" % self.fullName)
+         self.tracer.error("[%s] sqlPassword cannot be empty" % self.fullName)
          return False
       return True
 
@@ -160,7 +160,6 @@ class MSSQLProviderCheck(ProviderCheck):
          # Iterate through all rows of the last query result
          for r in resultRows:
             logItem = {
-               "CONTENT_VERSION": self.providerInstance.contentVersion,
                "SAPMON_VERSION": PAYLOAD_VERSION,
                "PROVIDER_INSTANCE": self.providerInstance.name,
                "METADATA": self.providerInstance.metadata
