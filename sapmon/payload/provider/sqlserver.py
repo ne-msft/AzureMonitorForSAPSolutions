@@ -15,6 +15,8 @@ from typing import Dict, List
 
 ###############################################################################
 
+TIMEOUT_SQL_SECS = 3
+
 # Default retry settings
 RETRY_RETRIES = 3
 RETRY_DELAY_SECS   = 1
@@ -23,9 +25,9 @@ RETRY_BACKOFF_MULTIPLIER = 2
 ###############################################################################
 
 class MSSQLProviderInstance(ProviderInstance):
-   SQLHostname = None
-   SQLUser = None
-   SQLPassword = None
+   sqlHostname = None
+   sqlUsername = None
+   sqlPassword = None
 
    def __init__(self,
                 tracer: logging.Logger,
@@ -47,38 +49,35 @@ class MSSQLProviderInstance(ProviderInstance):
 
    # Parse provider properties and fetch DB password from KeyVault, if necessary
    def parseProperties(self):
-      self.SQLHostname = self.providerProperties.get("sqlHostname", None)
-      if not self.SQLHostname:
+      self.sqlHostname = self.providerProperties.get("sqlHostname", None)
+      if not self.sqlHostname:
          self.tracer.error("[%s] sqlHostname cannot be empty" % self.fullName)
          return False
-      self.SQLUser = self.providerProperties.get("sqlUsername", None)
-      if not self.SQLUser:
+      self.sqlPort = self.providerProperties.get("sqlPort", None)
+      self.sqlUsername = self.providerProperties.get("sqlUsername", None)
+      if not self.sqlUsername:
          self.tracer.error("[%s] sqlUsername cannot be empty" % self.fullName)
          return False
-      self.SQLPassword = self.providerProperties.get("sqlPassword", None)
-      if not self.SQLPassword:
+      self.sqlPassword = self.providerProperties.get("sqlPassword", None)
+      if not self.sqlPassword:
          self.tracer.error("[%s] sqlPassword cannot be empty" % self.fullName)
          return False
       return True
 
    # Validate that we can establish a sql connection and run queries
    def validate(self) -> bool:
-      self.tracer.info("connecting to sql instance (%s) to run test query" % self.SQLHostname)
+      self.tracer.info("connecting to sql instance (%s) to run test query" % self.sqlHostname)
 
       # Try to establish a sql connection using the details provided by the user
       try:
-         connection = self._establishsqlConnectionToHost()
-         if not connection.isconnected():
-            self.tracer.error("[%s] unable to validate connection status" % self.fullName)
-            return False
+         connection = self._establishSqlConnectionToHost()
+         cursor = connection.cursor()
       except Exception as e:
-         self.tracer.error("[%s] could not establish sql connection %s (%s)" % (self.fullName,self.SQLHostname,e))
+         self.tracer.error("[%s] could not establish sql connection %s (%s)" % (self.fullName, self.sqlHostname, e))
          return False
 
       # Try to run a query 
       try:
-         cursor = connection.cursor()
-         connection.add_output_converter(-150, handle_sql_variant_as_string)
          cursor.execute("SELECT db_name();")
          connection.close()
       except Exception as e:
@@ -86,20 +85,27 @@ class MSSQLProviderInstance(ProviderInstance):
          return False
       return True
 
-   def _establishsqlConnectionToHost(self,
-                                     SQLHostname: str = None,
-                                     SQLUser: str = None,
-                                     SQLPassword: str = None) -> pyodbc.Connection:
-      if not SQLHostname:
-         SQLHostname = self.SQLHostname
-      if not SQLUser:
-         SQLUser = self.SQLUser
-      if not SQLPassword:
-         SQLPassword = self.SQLPassword
-      self.tracer.debug("Connection  : DRIVER={ODBC Driver 17 for SQL Server};SERVER=%s;UID=%s;PWD=%s" % (SQLHostname, SQLUser, SQLPassword))
+   def _establishSqlConnectionToHost(self,
+                                     sqlHostname: str = None,
+                                     sqlPort:int = None,
+                                     sqlUsername: str = None,
+                                     sqlPassword: str = None) -> pyodbc.Connection:
+      if not sqlHostname:
+         sqlHostname = self.sqlHostname
+      if not sqlPort:
+         sqlPort = self.sqlPort
+      if not sqlUsername:
+         sqlUsername = self.sqlUsername
+      if not sqlPassword:
+         sqlPassword = self.sqlPassword
 
-      conn = pyodbc.connect("DRIVER={ODBC Driver 17 for SQL Server};SERVER=%s;UID=%s;PWD=%s" % (SQLHostname, SQLUser, SQLPassword))
+      # if SQL port is given, append it to the hostname
+      if sqlPort:
+         sqlHostname += ",%d" % sqlPort
 
+      self.tracer.debug("trying to connect DRIVER={ODBC Driver 17 for SQL Server};SERVER=%s;UID=%s" % (sqlHostname, sqlUsername))
+      conn = pyodbc.connect("DRIVER={ODBC Driver 17 for SQL Server};SERVER=%s;UID=%s;PWD=%s" % (sqlHostname, sqlUsername, sqlPassword),
+                            timeout=TIMEOUT_SQL_SECS)
       return conn
 
 ###############################################################################
@@ -115,13 +121,12 @@ class MSSQLProviderCheck(ProviderCheck):
       return super().__init__(provider, **kwargs)
 
    # Obtain one working sql connection
-   def _getsqlConnection(self):
+   def _getSqlConnection(self):
       self.tracer.info("[%s] establishing connection with sql instance" % self.fullName)
 
       try:
-        connection = self.providerInstance._establishsqlConnectionToHost()
-        #Validate that we're indeed connected
-        #if connection.isconnected():
+        connection = self.providerInstance._establishSqlConnectionToHost()
+        cursor = connection.cursor()
       except Exception as e:
          self.tracer.warning("[%s] could not connect to sql (%s) " % (self.fullName,e))
          return (None)
@@ -184,7 +189,7 @@ class MSSQLProviderCheck(ProviderCheck):
       self.tracer.info("[%s] connecting to sql and executing SQL" % self.fullName)
 
       # Find and connect to sql server
-      connection = self._getsqlConnection()
+      connection = self._getSqlConnection()
       if not connection:
          raise Exception("Unable to get SQL connection")
 
