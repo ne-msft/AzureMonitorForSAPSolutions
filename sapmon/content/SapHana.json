@@ -19,16 +19,16 @@
             ]
         },
         {
-            "name": "SystemOverview",
-            "description": "SAP HANA System Overview",
-            "customLog": "SapHana_SystemOverview",
+            "name": "HostInformation",
+            "description": "SAP HANA Host Information",
+            "customLog": "SapHana_HostInformation",
             "frequencySecs": 86400,
             "includeInCustomerAnalytics": true,
             "actions": [
                 {
                     "type": "ExecuteSql",
                     "parameters": {
-                        "sql": "SELECT * FROM SYS.M_SYSTEM_OVERVIEW WHERE SECTION = 'System' OR SECTION = 'Services'"
+                        "sql": "SELECT * FROM SYS.M_HOST_INFORMATION"
                     }
                 }
             ]
