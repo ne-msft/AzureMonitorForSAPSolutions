@@ -9,6 +9,7 @@ import pyodbc
 # Payload modules
 from const import *
 from helper.azure import *
+from helper.context import *
 from helper.tools import *
 from provider.base import ProviderInstance, ProviderCheck
 from typing import Dict, List
@@ -31,6 +32,7 @@ class MSSQLProviderInstance(ProviderInstance):
 
    def __init__(self,
                 tracer: logging.Logger,
+                ctx: Context,
                 providerInstance: Dict[str, str],
                 skipContent: bool = False,
                 **kwargs):
@@ -42,6 +44,7 @@ class MSSQLProviderInstance(ProviderInstance):
       }
 
       super().__init__(tracer,
+                       ctx,
                        providerInstance,
                        retrySettings,
                        skipContent,

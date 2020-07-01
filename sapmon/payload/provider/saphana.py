@@ -8,6 +8,7 @@ import time
 # Payload modules
 from const import *
 from helper.azure import *
+from helper.context import *
 from helper.tools import *
 from provider.base import ProviderInstance, ProviderCheck
 from typing import Dict, List
@@ -40,6 +41,7 @@ class saphanaProviderInstance(ProviderInstance):
 
    def __init__(self,
                 tracer: logging.Logger,
+                ctx: Context,
                 providerInstance: Dict[str, str],
                 skipContent: bool = False,
                 **kwargs):
@@ -51,6 +53,7 @@ class saphanaProviderInstance(ProviderInstance):
       }
 
       super().__init__(tracer,
+                       ctx,
                        providerInstance,
                        retrySettings,
                        skipContent,
@@ -73,9 +76,9 @@ class saphanaProviderInstance(ProviderInstance):
       self.hanaDbPassword = self.providerProperties.get("hanaDbPassword", None)
       if not self.hanaDbPassword:
          hanaDbPasswordKeyVaultUrl = self.providerProperties.get("hanaDbPasswordKeyVaultUrl", None)
-         passwordKeyVaultMsiClientId = self.providerProperties.get("keyVaultCredentialsMsiClientID", None)
-         if not hanaDbPasswordKeyVaultUrl or not passwordKeyVaultMsiClientId:
-            self.tracer.error("[%s] if no password, hanaDbPasswordKeyVaultUrl and keyVaultCredentialsMsiClientID must be given" % self.fullName)
+         passwordKeyVaultMsiClientId = self.ctx.msiClientId
+         if not hanaDbPasswordKeyVaultUrl:
+            self.tracer.error("[%s] if no password, hanaDbPasswordKeyVaultUrl must be given" % self.fullName)
             return False
 
          # Determine URL of separate KeyVault

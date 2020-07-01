@@ -8,6 +8,7 @@ from typing import Callable, Dict, List, Optional
 
 # Payload modules
 from const import *
+from helper.context import *
 from helper.tools import *
 
 ###############################################################################
@@ -15,6 +16,7 @@ from helper.tools import *
 # Abstract base class for an instance of a monitoring provider
 class ProviderInstance(ABC):
    tracer = None
+   ctx = None
    name = None
    fullName = None
    providerType = None
@@ -26,11 +28,13 @@ class ProviderInstance(ABC):
    
    def __init__(self,
                 tracer: logging.Logger,
+                ctx: Context,
                 providerInstance: Dict[str, str],
                 retrySettings: Dict[str, int],
                 skipContent: bool = False):
       # This constructor gets called after the child class
       self.tracer = tracer
+      self.ctx = ctx
       self.providerProperties = providerInstance["properties"]
       self.metadata = providerInstance["metadata"]
       self.name = providerInstance["name"]
