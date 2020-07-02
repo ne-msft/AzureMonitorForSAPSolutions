@@ -89,6 +89,7 @@ def loadConfig() -> bool:
          try:
             providerInstance = ProviderFactory.makeProviderInstance(providerType,
                                                                     tracer,
+                                                                    ctx,
                                                                     providerProperties,
                                                                     skipContent = False)
          except Exception as e:
@@ -156,6 +157,7 @@ def addProvider(args: str = None,
    try:
       newProviderInstance = ProviderFactory.makeProviderInstance(args.type,
                                                                  tracer,
+                                                                 ctx,
                                                                  instanceProperties,
                                                                  skipContent = True)
    except Exception as e:

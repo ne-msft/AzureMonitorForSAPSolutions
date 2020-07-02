@@ -10,6 +10,7 @@ from requests.exceptions import Timeout
 
 # Payload modules
 from const import PAYLOAD_VERSION
+from helper.context import *
 from helper.tools import JsonEncoder
 from provider.base import ProviderInstance, ProviderCheck
 from typing import Dict, List
@@ -32,6 +33,7 @@ class prometheusProviderInstance(ProviderInstance):
 
     def __init__(self,
                tracer: logging.Logger,
+               ctx: Context,
                providerInstance: Dict[str, str],
                skipContent: bool = False,
                **kwargs):
@@ -43,6 +45,7 @@ class prometheusProviderInstance(ProviderInstance):
         }
 
         super().__init__(tracer,
+                         ctx,
                          providerInstance,
                          retrySettings,
                          skipContent,
