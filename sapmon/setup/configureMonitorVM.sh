@@ -27,6 +27,7 @@ ExecuteCommand() {
 }
 
 # Update repos for SQL Server
+# Note: -k/--insecure cannot be used with curl; security compliance requires we verify certs
 ExecuteCommand "curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add -"
 ExecuteCommand "curl https://packages.microsoft.com/config/ubuntu/16.04/prod.list > /etc/apt/sources.list.d/mssql-release.list"
 # Update

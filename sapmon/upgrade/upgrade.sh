@@ -28,6 +28,8 @@ echo "Fetching information"
 SAPMONITOR=$(az sapmonitor show --subscription $SUBSCRIPTION -g $RESOURCE_GROUP -n $RESOURCE_NAME)
 SAPMON_ID=$(echo $SAPMONITOR | jq .managedResourceGroupName -r | cut -d'-' -f 3)
 DB_NAME=$(echo $SAPMONITOR | jq .hanaDbName -r)
+
+# Note: -k/--insecure cannot be used with curl; security compliance requires we verify certs
 LATEST_VERSION=$(curl -s https://api.github.com/repos/Azure/AzureMonitorForSAPSolutions/releases/latest | jq .tag_name -r)
 USER_OBJECT_ID=$(az ad signed-in-user show --query objectId -o tsv)
 
